@@ -387,8 +387,8 @@
     }
     if(e.baseAmount==null) e.baseAmount = Number(e.amount) * (e.rate||1);
   });
-  // one-time split: rename "Food & groceries" -> "Food & dining", add "Groceries"
-  (function migrateFoodSplit(){
+  // split "Food & groceries" -> "Food & dining", add "Groceries". Reused on load and restore.
+  function migrateFoodSplit(){
     const old = state.categories.find(c=>c.name==="Food & groceries");
     if(old){
       old.name = "Food & dining";
@@ -399,7 +399,8 @@
       }
       persist();
     }
-  })();
+  }
+  migrateFoodSplit();
 
   function cid(){ return "c"+Math.random().toString(36).slice(2,9); }
   function eid(){ return "e"+Math.random().toString(36).slice(2,9); }
@@ -811,6 +812,7 @@
       if(!confirm("Restore "+n+" expense"+(n===1?"":"s")+" from this backup? This replaces everything currently in the app.")) return;
       state = {
         currency: incoming.currency || "S$",
+        dispCur: (incoming.dispCur && CURRENCIES.includes(incoming.dispCur)) ? incoming.dispCur : BASE,
         categories: incoming.categories,
         expenses: incoming.expenses
       };
@@ -819,8 +821,11 @@
         if(!e.cur){ e.cur=BASE; e.rate=1; e.rateDate=e.date; e.baseAmount=Number(e.amount); }
         if(e.baseAmount==null) e.baseAmount = Number(e.amount)*(e.rate||1);
       });
+      migrateFoodSplit(); // re-apply category split if an old backup was restored
+      dispCur = state.dispCur; if($("dispCur")) $("dispCur").value = dispCur;
       persist();
       render();
+      if(dispCur!==BASE) loadDispRate();
       toast("Restored "+n+" entr"+(n===1?"y":"ies"));
     };
     reader.onerror = ()=>toast("Couldn't read that file");
