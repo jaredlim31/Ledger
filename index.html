@@ -89,6 +89,11 @@
     letter-spacing:.02em;
   }
   .section-head .hint{font-size:12px;color:var(--sub);}
+  .txn-filter{
+    border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;font-family:inherit;
+    max-width:56%;
+  }
 
   .cat-row{
     display:flex;align-items:center;gap:12px;padding:11px 0;
@@ -262,7 +267,7 @@
 
   <div class="section-head">
     <h2>Transactions</h2>
-    <span class="hint" id="txnHint"></span>
+    <select id="txnFilter" class="txn-filter"><option value="">All categories</option></select>
   </div>
   <div class="card" id="txnList"></div>
 
@@ -343,7 +348,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-1"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-3"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -401,6 +406,7 @@
   let viewM = today.getMonth(); // 0-11
   let selCat = null;
   let editingId = null; // id of expense being edited, or null when adding
+  let txnFilter = "";   // catId to filter the transaction list by, or "" for all
   // Overview display currency (base by default). Converts the SGD totals for display only.
   let dispCur = (state.dispCur && CURRENCIES.includes(state.dispCur)) ? state.dispCur : BASE;
   let dispRate = 1;        // BASE -> dispCur multiplier
@@ -428,6 +434,17 @@
   function toDisp(baseAmt){ return baseAmt * dispRate; }
   // Format a BASE amount in the current display currency
   function fmtDisp(baseAmt){ return fmtCur(toDisp(baseAmt), dispCur); }
+
+  // Value of one expense IN the display currency.
+  // If the expense was logged in the display currency, use its original inputted amount
+  // (no conversion). Otherwise convert its locked BASE value at the live SGD->display rate.
+  function dispValueOf(e){
+    const cur = e.cur || BASE;
+    if(cur === dispCur) return Number(e.amount);      // native passthrough
+    if(dispCur === BASE) return baseOf(e);            // display is SGD: use locked base
+    return baseOf(e) * dispRate;                       // convert base -> display
+  }
+  function fmtDispExp(e){ return fmtCur(dispValueOf(e), dispCur); }
 
   // Fetch the latest BASE->dispCur rate (once per session per currency)
   async function loadDispRate(){
@@ -473,19 +490,19 @@
   function render(){
     $("mLabel").textContent = MONTHS[viewM]+" "+viewY;
     const exps = monthExpenses();
-    const total = exps.reduce((s,e)=>s+baseOf(e),0);
-    $("totAmt").textContent = fmtDisp(total);
+    const total = exps.reduce((s,e)=>s+dispValueOf(e),0);
+    $("totAmt").textContent = fmtCur(total, dispCur);
     $("txnCount").textContent = exps.length+(exps.length===1?" entry":" entries");
     if(dispCur===BASE){
       $("totSub").textContent = "In "+BASE+" · foreign amounts converted at logged rates";
     } else {
-      $("totSub").textContent = "Converted from "+BASE+" at "+num(dispRate,4)+" ("+ (dispRateDate||"latest") +")";
+      $("totSub").textContent = "In "+dispCur+" · native "+dispCur+" amounts used directly, others at "+num(dispRate,4);
     }
     $("txnHint").textContent = exps.length? "" : "";
 
-    // category breakdown
+    // category breakdown (in display currency, native passthrough)
     const byCat = {};
-    exps.forEach(e=>{ byCat[e.catId]=(byCat[e.catId]||0)+baseOf(e); });
+    exps.forEach(e=>{ byCat[e.catId]=(byCat[e.catId]||0)+dispValueOf(e); });
     const cats = Object.keys(byCat).map(id=>({cat:catById(id), amt:byCat[id]}))
       .sort((a,b)=>b.amt-a.amt);
     const maxAmt = cats.length? cats[0].amt : 1;
@@ -500,7 +517,7 @@
           <div class="cat-row">
             <span class="dot" style="background:${c.cat.color}"></span>
             <span class="cat-name">${esc(c.cat.name)}</span>
-            <span class="cat-amt">${fmtDisp(c.amt)}</span>
+            <span class="cat-amt">${fmtCur(c.amt, dispCur)}</span>
           </div>
           <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%;background:${c.cat.color}"></div></div>
         </div>`;
@@ -509,10 +526,13 @@
 
     // transactions
     const tl = $("txnList");
+    const shown = txnFilter ? exps.filter(e=>e.catId===txnFilter) : exps;
     if(!exps.length){
       tl.innerHTML = '<div class="empty"><span class="big">Nothing logged</span>Tap “Add expense” to start.</div>';
+    } else if(!shown.length){
+      tl.innerHTML = '<div class="empty"><span class="big">No matches</span>No transactions in this category this month.</div>';
     } else {
-      tl.innerHTML = exps.map(e=>{
+      tl.innerHTML = shown.map(e=>{
         const cat = catById(e.catId);
         const d = new Date(e.date+"T00:00:00");
         const ds = d.toLocaleDateString(undefined,{day:"numeric",month:"short"});
@@ -524,8 +544,8 @@
             ${e.note?`<p class="note">${esc(e.note)}</p>`:""}
           </div>
           <div class="right">
-            <div class="amt">${fmtMoney(baseOf(e))}</div>
-            ${e.cur && e.cur!==BASE ? `<div class="orig">${fmtCur(Number(e.amount), e.cur)}</div>` : ""}
+            <div class="amt">${fmtCur(Number(e.amount), e.cur||BASE)}</div>
+            ${(e.cur||BASE)!==dispCur ? `<div class="orig">${fmtDispExp(e)}</div>` : ""}
             <div class="rowbtns">
               <button class="edit" data-edit="${e.id}">Edit</button>
               <button class="del" data-del="${e.id}">Delete</button>
@@ -534,6 +554,7 @@
         </div>`;
       }).join("");
     }
+    buildFilter();
   }
 
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
@@ -548,6 +569,16 @@
       `<div class="catchip${selCat===c.id?" sel":""}" data-cat="${c.id}">
         <span class="cdot" style="background:${c.color}"></span>${esc(c.name)}
       </div>`).join("");
+  }
+  function buildFilter(){
+    const sel = $("txnFilter");
+    if(!sel) return;
+    const cur = txnFilter;
+    sel.innerHTML = '<option value="">All categories</option>' +
+      state.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    // keep selection if it still exists, else reset to all
+    if(cur && state.categories.some(c=>c.id===cur)) sel.value = cur;
+    else { sel.value = ""; txnFilter = ""; }
   }
   function buildCurSelect(){
     const sel = $("fCur");
@@ -915,6 +946,7 @@
     selCat=chip.getAttribute("data-cat"); renderChips(); validate();
   };
   $("exportBtn").onclick=exportMonth;
+  $("txnFilter").onchange=()=>{ txnFilter = $("txnFilter").value; render(); };
   $("dispCur").onchange=()=>{
     dispCur = $("dispCur").value;
     state.dispCur = dispCur; persist();
