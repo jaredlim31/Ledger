@@ -342,7 +342,7 @@
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
   const DEFAULT_CATS = [
-    "Rent","Food & groceries","Nights out","Shopping","Utilities & internet",
+    "Rent","Food & dining","Groceries","Nights out","Shopping","Utilities & internet",
     "Gym","Transport","Travel","Phone & subscriptions","Grooming & personal care","Buffer / misc"
   ];
 
@@ -385,6 +385,19 @@
     }
     if(e.baseAmount==null) e.baseAmount = Number(e.amount) * (e.rate||1);
   });
+  // one-time split: rename "Food & groceries" -> "Food & dining", add "Groceries"
+  (function migrateFoodSplit(){
+    const old = state.categories.find(c=>c.name==="Food & groceries");
+    if(old){
+      old.name = "Food & dining";
+      const hasGroceries = state.categories.some(c=>c.name==="Groceries");
+      if(!hasGroceries){
+        const color = PALETTE[state.categories.length % PALETTE.length];
+        state.categories.push({id:cid(), name:"Groceries", color});
+      }
+      persist();
+    }
+  })();
 
   function cid(){ return "c"+Math.random().toString(36).slice(2,9); }
   function eid(){ return "e"+Math.random().toString(36).slice(2,9); }
