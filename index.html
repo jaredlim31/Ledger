@@ -275,10 +275,10 @@
 
   <div class="backup-bar">
     <button class="mini-btn" id="backupBtn">↧ Back up data</button>
-    <label class="mini-btn" id="restoreBtn" for="restoreFile" role="button">↥ Restore</label>
+    <button class="mini-btn" id="restoreBtn">↥ Restore</button>
   </div>
   <button class="managebtn" id="manageBtn">Manage categories</button>
-  <input type="file" id="restoreFile" accept=".json,application/json,text/plain,*/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+  <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
 </div>
 
 <button class="fab" id="addFab">＋ &nbsp;Add expense</button>
@@ -348,7 +348,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-4"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-5"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -526,6 +526,8 @@
 
     // transactions
     const tl = $("txnList");
+    // guard: if the active filter points to a category that no longer exists, clear it
+    if(txnFilter && !state.categories.some(c=>c.id===txnFilter)) txnFilter = "";
     const shown = txnFilter ? exps.filter(e=>e.catId===txnFilter) : exps;
     if(!exps.length){
       tl.innerHTML = '<div class="empty"><span class="big">Nothing logged</span>Tap “Add expense” to start.</div>';
@@ -554,7 +556,7 @@
         </div>`;
       }).join("");
     }
-    buildFilter();
+    try{ buildFilter(); }catch(err){ /* filter is non-critical; never let it blank the UI */ }
   }
 
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
@@ -957,6 +959,7 @@
     loadDispRate();
   };
   $("backupBtn").onclick=backup;
+  $("restoreBtn").onclick=()=>$("restoreFile").click();
   $("restoreFile").onchange=(e)=>{
     const f=e.target.files && e.target.files[0];
     if(f) restore(f);
