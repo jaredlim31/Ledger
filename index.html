@@ -94,6 +94,11 @@
     border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;font-family:inherit;
     max-width:56%;
   }
+  .txn-search{
+    width:100%;border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:10px;padding:10px 14px;font-size:15px;font-family:inherit;margin-bottom:10px;
+  }
+  .txn-search:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
 
   .cat-row{
     display:flex;align-items:center;gap:12px;padding:11px 0;
@@ -103,6 +108,8 @@
   .dot{width:9px;height:9px;border-radius:50%;flex:none;}
   .cat-name{flex:1;font-size:15px;}
   .cat-amt{font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;}
+  .cat-budget{font-weight:400;font-size:12px;color:var(--sub);}
+  .cat-budget.over{color:var(--danger);font-weight:600;}
   .cat-bar-track{height:4px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden;}
   .cat-bar-fill{height:100%;border-radius:2px;}
 
@@ -115,6 +122,7 @@
   .txn .name{font-weight:600;font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .txn .tags{font-size:12.5px;color:var(--sub);margin:2px 0 0;}
   .txn .note{font-size:12.5px;color:var(--sub);font-style:italic;margin:3px 0 0;}
+  .series-badge{background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;white-space:nowrap;}
   .txn .right{text-align:right;flex:none;}
   .txn .amt{font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;}
   .txn .orig{font-variant-numeric:tabular-nums;font-size:12px;color:var(--sub);margin-top:1px;}
@@ -222,6 +230,11 @@
 
   .manage-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);}
   .manage-row .cname{flex:1;}
+  .budget-wrap{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:8px;padding:0 6px;background:var(--card);}
+  .manage-hint{font-size:12px;color:var(--sub);margin:-8px 0 14px;}
+  .budget-sym{font-size:12px;color:var(--sub);}
+  .cbudget{width:64px;border:none;background:transparent;padding:8px 2px;font-size:14px;font-variant-numeric:tabular-nums;}
+  .cbudget:focus{outline:none;}
   .manage-row input[type=text]{padding:8px 10px;font-size:15px;}
   .manage-row .rm{background:none;border:none;color:var(--danger);font-size:20px;cursor:pointer;padding:0 4px;}
   .addcat{display:flex;gap:8px;margin-top:14px;}
@@ -260,6 +273,12 @@
   </div>
 
   <div class="section-head">
+    <h2>Spending trend</h2>
+    <span class="hint">last 6 months</span>
+  </div>
+  <div class="card" id="trendChart"></div>
+
+  <div class="section-head">
     <h2>By category</h2>
     <span class="hint">this month</span>
   </div>
@@ -269,6 +288,7 @@
     <h2>Transactions</h2>
     <select id="txnFilter" class="txn-filter"><option value="">All categories</option></select>
   </div>
+  <input type="text" id="txnSearch" class="txn-search" placeholder="Search name or note…">
   <div class="card" id="txnList"></div>
 
   <button class="exportbtn" id="exportBtn">⤓ &nbsp;Export month to Excel</button>
@@ -318,6 +338,19 @@
       <label>Note (optional)</label>
       <textarea id="fNote" placeholder="Lunch with team"></textarea>
     </div>
+    <div class="field">
+      <label>Repeat</label>
+      <select id="fRepeat" class="cur-select" style="width:100%;text-align:left;">
+        <option value="none">One-time (this month only)</option>
+        <option value="installment">Installment — split total across months</option>
+        <option value="recurring">Recurring — same amount each month</option>
+      </select>
+      <div id="repeatOpts" style="display:none;margin-top:10px;">
+        <label>Number of months</label>
+        <input type="number" id="fMonths" inputmode="numeric" min="2" max="60" step="1" placeholder="e.g. 12">
+        <div class="fx-line" id="repeatHint"></div>
+      </div>
+    </div>
     <div class="sheet-actions">
       <button class="btn-ghost" id="cancelAdd">Cancel</button>
       <button class="btn-primary" id="saveAdd" disabled>Save expense</button>
@@ -329,6 +362,7 @@
 <div class="overlay" id="manageOverlay">
   <div class="sheet">
     <h3>Categories</h3>
+    <p class="manage-hint">Set an optional monthly budget beside each category.</p>
     <div id="manageList"></div>
     <div class="addcat">
       <input type="text" id="newCatName" placeholder="New category name">
@@ -348,7 +382,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-7"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-9"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -407,6 +441,7 @@
   let selCat = null;
   let editingId = null; // id of expense being edited, or null when adding
   let txnFilter = "";   // catId to filter the transaction list by, or "" for all
+  let txnSearch = "";   // text search over name/note
   // Overview display currency (base by default). Converts the SGD totals for display only.
   let dispCur = (state.dispCur && CURRENCIES.includes(state.dispCur)) ? state.dispCur : BASE;
   let dispRate = 1;        // BASE -> dispCur multiplier
@@ -519,6 +554,23 @@
       cl.innerHTML = '<div class="empty"><span class="big">No spending yet</span>Add your first expense for this month.</div>';
     } else {
       cl.innerHTML = cats.map(c=>{
+        const budgetBase = c.cat.budget || 0;
+        // budget stored in BASE (SGD); convert to display currency for comparison
+        const budgetDisp = budgetBase ? (dispCur===BASE ? budgetBase : budgetBase*dispRate) : 0;
+        if(budgetDisp>0){
+          const ratio = c.amt/budgetDisp;
+          const over = ratio>1;
+          const pct = Math.min(ratio*100,100);
+          const barColor = over ? "var(--danger)" : c.cat.color;
+          return `<div>
+            <div class="cat-row">
+              <span class="dot" style="background:${c.cat.color}"></span>
+              <span class="cat-name">${esc(c.cat.name)}</span>
+              <span class="cat-amt">${fmtCur(c.amt, dispCur)}<span class="cat-budget${over?' over':''}"> / ${fmtCur(budgetDisp, dispCur)}</span></span>
+            </div>
+            <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+          </div>`;
+        }
         const pct = maxAmt? (c.amt/maxAmt*100):0;
         return `<div>
           <div class="cat-row">
@@ -535,11 +587,20 @@
     const tl = $("txnList");
     // guard: if the active filter points to a category that no longer exists, clear it
     if(txnFilter && !state.categories.some(c=>c.id===txnFilter)) txnFilter = "";
-    const shown = txnFilter ? exps.filter(e=>e.catId===txnFilter) : exps;
+    const shown = exps.filter(e=>{
+      if(txnFilter && e.catId!==txnFilter) return false;
+      if(txnSearch){
+        const q = txnSearch.toLowerCase();
+        const hay = ((e.name||"")+" "+(e.note||"")).toLowerCase();
+        if(hay.indexOf(q)===-1) return false;
+      }
+      return true;
+    });
     if(!exps.length){
       tl.innerHTML = '<div class="empty"><span class="big">Nothing logged</span>Tap “Add expense” to start.</div>';
     } else if(!shown.length){
-      tl.innerHTML = '<div class="empty"><span class="big">No matches</span>No transactions in this category this month.</div>';
+      const why = txnSearch ? "No transactions match your search." : "No transactions in this category this month.";
+      tl.innerHTML = '<div class="empty"><span class="big">No matches</span>'+why+'</div>';
     } else {
       tl.innerHTML = shown.map(e=>{
         const cat = catById(e.catId);
@@ -549,7 +610,7 @@
           <span class="dot" style="background:${cat.color};margin-top:6px"></span>
           <div class="meta tap" data-edit="${e.id}">
             <p class="name">${esc(e.name||cat.name)}</p>
-            <p class="tags">${esc(cat.name)} · ${ds}</p>
+            <p class="tags">${esc(cat.name)} · ${ds}${e.seriesId?` · <span class="series-badge">${e.seriesType==="installment"?"Instalment":"Recurring"} ${e.seriesIndex}/${e.seriesTotal}</span>`:""}</p>
             ${e.note?`<p class="note">${esc(e.note)}</p>`:""}
           </div>
           <div class="right">
@@ -564,7 +625,45 @@
       }).join("");
     }
     try{ buildFilter(); }catch(err){ /* filter is non-critical; never let it blank the UI */ }
+    try{ renderTrend(); }catch(err){ /* chart is non-critical */ }
    }catch(err){ try{ toast("Render error: "+(err&&err.message?err.message:err)); }catch(_){} }
+  }
+
+  // ---------- Spending trend chart (last 6 months ending at viewed month) ----------
+  function renderTrend(){
+    const el = $("trendChart");
+    if(!el) return;
+    const months = [];
+    for(let i=5;i>=0;i--){
+      const d = new Date(viewY, viewM - i, 1);
+      months.push({y:d.getFullYear(), m:d.getMonth()});
+    }
+    const totals = months.map(mo=>{
+      const k = monthKey(mo.y, mo.m);
+      const es = state.expenses.filter(e=>expMonth(e)===k);
+      return es.reduce((s,e)=>s+dispValueOf(e),0);
+    });
+    const max = Math.max(...totals, 1);
+    if(totals.every(t=>t===0)){
+      el.innerHTML = '<div class="empty" style="padding:20px;">No spending in this range yet.</div>';
+      return;
+    }
+    const W=320, H=140, pad=24, bw=W/6*0.56, gap=W/6;
+    let bars="";
+    months.forEach((mo,i)=>{
+      const t=totals[i];
+      const bh = max? (t/max)*(H-pad*2) : 0;
+      const x = i*gap + (gap-bw)/2;
+      const y = H-pad-bh;
+      const isCur = (mo.y===viewY && mo.m===viewM);
+      const col = isCur ? "var(--accent)" : "var(--line)";
+      const lbl = MONTHS[mo.m].slice(0,3);
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${col}"/>`;
+      bars += `<text x="${(x+bw/2).toFixed(1)}" y="${H-pad+14}" text-anchor="middle" font-size="10" fill="var(--sub)">${lbl}</text>`;
+      if(t>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--sub)">${Math.round(t)}</text>`;
+    });
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;">${bars}</svg>
+      <div style="text-align:center;font-size:11px;color:var(--sub);margin-top:4px;">Monthly total in ${dispCur}</div>`;
   }
 
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
@@ -610,6 +709,8 @@
       $("fDate").value = today.toISOString().slice(0,10);
     }
     $("fCur").value = BASE;
+    $("fRepeat").value = "none"; $("fMonths").value=""; $("repeatOpts").style.display="none"; $("repeatHint").textContent="";
+    $("fRepeat").parentElement.style.display = ""; // ensure repeat field visible when adding
     fx = { cur:BASE, rate:1, rateDate:null, status:"base", token:0 };
     updateCurUI();
     renderChips();
@@ -639,6 +740,8 @@
       updateCurUI();
       scheduleRate();
     }
+    $("fRepeat").value = "none"; $("repeatOpts").style.display="none"; $("repeatHint").textContent="";
+    $("fRepeat").parentElement.style.display = "none"; // no repeat when editing a single entry
     renderChips();
     validate();
     $("addOverlay").classList.add("on");
@@ -751,15 +854,48 @@
       editingId=null;
       closeAdd(); render(); toast("Changes saved");
     } else {
-      state.expenses.push({
-        id:eid(), amount:amt, cur, rate:rr.rate, rateDate:rr.rateDate,
-        baseAmount, name:$("fName").value.trim(),
-        catId:selCat, date, note:$("fNote").value.trim()
-      });
-      persist();
-      const d = new Date(date+"T00:00:00");
-      viewY=d.getFullYear(); viewM=d.getMonth();
-      closeAdd(); render(); toast("Expense saved");
+      const repeat = $("fRepeat").value;
+      if(repeat==="none"){
+        state.expenses.push({
+          id:eid(), amount:amt, cur, rate:rr.rate, rateDate:rr.rateDate,
+          baseAmount, name:$("fName").value.trim(),
+          catId:selCat, date, note:$("fNote").value.trim()
+        });
+        persist();
+        const d = new Date(date+"T00:00:00");
+        viewY=d.getFullYear(); viewM=d.getMonth();
+        closeAdd(); render(); toast("Expense saved");
+      } else {
+        // multi-month series (installment splits the total; recurring repeats it)
+        const months = Math.max(2, Math.min(60, Math.round(Number($("fMonths").value)||0)));
+        if(months<2){ toast("Enter number of months (2+)"); return; }
+        const perMonth = repeat==="installment" ? round2(amt/months) : amt;
+        const seriesId = "s"+eid();
+        const start = new Date(date+"T00:00:00");
+        const nm = $("fName").value.trim();
+        const note = $("fNote").value.trim();
+        // for installment, adjust the LAST month to absorb rounding remainder
+        let allocated = 0;
+        for(let i=0;i<months;i++){
+          const dt = new Date(start.getFullYear(), start.getMonth()+i, start.getDate());
+          const dstr = dt.toISOString().slice(0,10);
+          let a = perMonth;
+          if(repeat==="installment"){
+            if(i===months-1) a = round2(amt - allocated); // last month takes remainder
+            else allocated = round2(allocated + perMonth);
+          }
+          state.expenses.push({
+            id:eid(), amount:a, cur, rate:rr.rate, rateDate:rr.rateDate,
+            baseAmount:round2(a*rr.rate), name:nm,
+            catId:selCat, date:dstr, note:note,
+            seriesId, seriesType:repeat, seriesIndex:i+1, seriesTotal:months
+          });
+        }
+        persist();
+        viewY=start.getFullYear(); viewM=start.getMonth();
+        closeAdd(); render();
+        toast((repeat==="installment"?"Installment":"Recurring")+" added across "+months+" months");
+      }
     }
   }
 
@@ -772,6 +908,7 @@
       `<div class="manage-row" data-row="${c.id}">
         <span class="dot" style="background:${c.color}"></span>
         <input type="text" class="cname" data-name="${c.id}" value="${esc(c.name)}">
+        <div class="budget-wrap"><span class="budget-sym">${BASE_SYM}</span><input type="number" class="cbudget" data-budget="${c.id}" value="${c.budget?c.budget:""}" placeholder="0" inputmode="decimal" step="1"></div>
         <button class="rm" data-rm="${c.id}" title="Remove">×</button>
       </div>`).join("");
   }
@@ -950,10 +1087,31 @@
   $("addFab").onclick=openAdd;
   $("cancelAdd").onclick=closeAdd;
   $("saveAdd").onclick=saveExpense;
-  $("fAmt").oninput=()=>{ if(fx.status==="ok") showEquiv(); validate(); };
+  $("fAmt").oninput=()=>{ if(fx.status==="ok") showEquiv(); validate(); updateRepeatHint(); };
   $("fCur").onchange=()=>{ scheduleRate(); updateCurUI(); validate(); };
   $("fDate").onchange=()=>{ if($("fCur").value!==BASE) scheduleRate(); };
   $("fRate").oninput=()=>{ validate(); };
+  function updateRepeatUI(){
+    const r = $("fRepeat").value;
+    $("repeatOpts").style.display = (r==="none") ? "none" : "block";
+    updateRepeatHint();
+  }
+  function updateRepeatHint(){
+    const r = $("fRepeat").value;
+    if(r==="none"){ $("repeatHint").textContent=""; return; }
+    const months = Math.round(Number($("fMonths").value)||0);
+    const amt = Number($("fAmt").value)||0;
+    const cur = $("fCur").value;
+    if(months<2 || amt<=0){ $("repeatHint").textContent="Enter amount and months (2+)"; return; }
+    if(r==="installment"){
+      const per = round2(amt/months);
+      $("repeatHint").textContent = fmtCur(amt,cur)+" ÷ "+months+" = "+fmtCur(per,cur)+"/month";
+    } else {
+      $("repeatHint").textContent = fmtCur(amt,cur)+" × "+months+" = "+fmtCur(amt*months,cur)+" total";
+    }
+  }
+  $("fRepeat").onchange=updateRepeatUI;
+  $("fMonths").oninput=updateRepeatHint;
   $("addOverlay").onclick=(e)=>{ if(e.target===$("addOverlay")) closeAdd(); };
   $("catChips").onclick=(e)=>{
     const chip=e.target.closest("[data-cat]"); if(!chip) return;
@@ -961,6 +1119,7 @@
   };
   $("exportBtn").onclick=exportMonth;
   $("txnFilter").onchange=()=>{ txnFilter = $("txnFilter").value; render(); };
+  $("txnSearch").oninput=()=>{ txnSearch = $("txnSearch").value; render(); $("txnSearch").focus(); };
   $("dispCur").onchange=()=>{
     dispCur = $("dispCur").value;
     state.dispCur = dispCur; persist();
@@ -988,13 +1147,28 @@
       const c=state.categories.find(x=>x.id===id);
       if(c){ c.name=inp.value.trim()||c.name; persist(); render(); }
     }
+    const bud=e.target.closest("[data-budget]");
+    if(bud){
+      const id=bud.getAttribute("data-budget");
+      const c=state.categories.find(x=>x.id===id);
+      if(c){ const v=Number(bud.value); c.budget = (v>0)?round2(v):0; persist(); render(); }
+    }
   });
   $("txnList").addEventListener("click",(e)=>{
     const ed=e.target.closest("[data-edit]");
     if(ed){ openEdit(ed.getAttribute("data-edit")); return; }
     const d=e.target.closest("[data-del]"); if(!d) return;
     const id=d.getAttribute("data-del");
-    state.expenses=state.expenses.filter(x=>x.id!==id);
+    const exp=state.expenses.find(x=>x.id===id);
+    if(exp && exp.seriesId){
+      const rest = state.expenses.filter(x=>x.seriesId===exp.seriesId).length;
+      let whole=false;
+      try{ whole = confirm("This is part of a "+exp.seriesTotal+"-month series. OK = delete the WHOLE series ("+rest+" entries). Cancel = delete just this month."); }catch(_){ whole=false; }
+      if(whole){ state.expenses=state.expenses.filter(x=>x.seriesId!==exp.seriesId); }
+      else { state.expenses=state.expenses.filter(x=>x.id!==id); }
+    } else {
+      state.expenses=state.expenses.filter(x=>x.id!==id);
+    }
     persist(); render(); toast("Deleted");
   });
 
