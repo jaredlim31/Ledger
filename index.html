@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Ledger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#12100c;
+    --paper:#f7f4ec;
+    --card:#fffdf7;
+    --line:#e4ddcd;
+    --sub:#8a8172;
+    --accent:#3a5a40;
+    --accent-soft:#e8efe6;
+    --gold:#b08430;
+    --danger:#a2432f;
+    --shadow:0 1px 2px rgba(18,16,12,.04),0 8px 24px rgba(18,16,12,.06);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:96px;
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:0 18px;}
+
+  header{
+    padding:26px 0 16px;
+    border-bottom:1px solid var(--line);
+    margin-bottom:20px;
+  }
+  .eyebrow{
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--gold);font-weight:600;margin:0 0 4px;
+  }
+  h1{
+    font-family:Georgia,"Times New Roman",serif;
+    font-weight:600;font-size:34px;line-height:1;margin:0;
+    letter-spacing:-.01em;
+  }
+  .month-nav{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-top:16px;gap:8px;
+  }
+  .month-nav .mlabel{
+    font-family:Georgia,serif;font-size:19px;font-weight:600;
+    flex:1;text-align:center;
+  }
+  .arrow{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:17px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex:none;
+  }
+  .arrow:active{background:var(--accent-soft);}
+
+  .total-card{
+    background:var(--accent);color:#f4f0e6;border-radius:16px;
+    padding:20px 22px;margin-bottom:22px;box-shadow:var(--shadow);
+    position:relative;overflow:hidden;
+  }
+  .total-card .tlabel{font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.72;margin:0;}
+  .total-card .tamt{font-family:Georgia,serif;font-size:40px;font-weight:600;line-height:1.1;margin:2px 0 0;}
+  .total-card .tsub{font-size:13px;opacity:.72;margin:6px 0 0;}
+  .total-card .txn-count{position:absolute;top:20px;right:22px;font-size:13px;opacity:.6;}
+  .disp-row{display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(244,240,230,.18);}
+  .disp-lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.7;}
+  .disp-select{
+    background:rgba(244,240,230,.12);color:#f4f0e6;border:1px solid rgba(244,240,230,.28);
+    border-radius:8px;padding:6px 10px;font-size:14px;font-weight:600;font-family:inherit;
+  }
+  .disp-select option{color:#12100c;}
+
+  .section-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin:0 0 10px;
+  }
+  .section-head h2{
+    font-family:Georgia,serif;font-size:15px;font-weight:600;margin:0;
+    letter-spacing:.02em;
+  }
+  .section-head .hint{font-size:12px;color:var(--sub);}
+
+  .cat-row{
+    display:flex;align-items:center;gap:12px;padding:11px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .cat-row:last-child{border-bottom:none;}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .cat-name{flex:1;font-size:15px;}
+  .cat-amt{font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;}
+  .cat-bar-track{height:4px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden;}
+  .cat-bar-fill{height:100%;border-radius:2px;}
+
+  .txn{
+    display:flex;align-items:flex-start;gap:12px;padding:13px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .txn:last-child{border-bottom:none;}
+  .txn .meta{flex:1;min-width:0;}
+  .txn .name{font-weight:600;font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .txn .tags{font-size:12.5px;color:var(--sub);margin:2px 0 0;}
+  .txn .note{font-size:12.5px;color:var(--sub);font-style:italic;margin:3px 0 0;}
+  .txn .right{text-align:right;flex:none;}
+  .txn .amt{font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;}
+  .txn .orig{font-variant-numeric:tabular-nums;font-size:12px;color:var(--sub);margin-top:1px;}
+  .txn .del{font-size:12px;color:var(--danger);background:none;border:none;padding:4px 0 0;cursor:pointer;}
+
+  .empty{
+    text-align:center;color:var(--sub);padding:40px 20px;font-size:14px;
+  }
+  .empty .big{font-family:Georgia,serif;font-size:18px;color:var(--ink);display:block;margin-bottom:4px;}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:16px 18px;margin-bottom:22px;box-shadow:var(--shadow);
+  }
+
+  .exportbtn{
+    width:100%;background:var(--card);border:1px solid var(--accent);color:var(--accent);
+    border-radius:12px;padding:14px;font-size:15px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .exportbtn:active{background:var(--accent-soft);}
+  .managebtn{
+    width:100%;background:none;border:none;color:var(--sub);
+    font-size:13px;padding:14px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;
+  }
+  .backup-bar{display:flex;gap:10px;margin-top:10px;}
+  .mini-btn{
+    flex:1;background:var(--card);border:1px solid var(--line);color:var(--ink);
+    border-radius:12px;padding:12px;font-size:13.5px;font-weight:600;cursor:pointer;
+  }
+  .mini-btn:active{background:var(--accent-soft);}
+
+  /* Floating add button */
+  .fab{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:22px;
+    background:var(--accent);color:#f4f0e6;border:none;
+    border-radius:30px;padding:15px 28px;font-size:16px;font-weight:600;
+    box-shadow:0 6px 20px rgba(58,90,64,.35);cursor:pointer;z-index:40;
+    display:flex;align-items:center;gap:8px;
+  }
+  .fab:active{transform:translateX(-50%) scale(.97);}
+
+  /* Sheet / modal */
+  .overlay{
+    position:fixed;inset:0;background:rgba(18,16,12,.4);z-index:50;
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  .overlay.on{display:flex;}
+  .sheet{
+    background:var(--paper);width:100%;max-width:520px;
+    border-radius:20px 20px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));
+    max-height:92vh;overflow-y:auto;
+    animation:rise .22s ease;
+  }
+  @keyframes rise{from{transform:translateY(30px);opacity:.6;}to{transform:translateY(0);opacity:1;}}
+  .sheet h3{font-family:Georgia,serif;font-size:22px;margin:0 0 18px;font-weight:600;}
+  label{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin:0 0 6px;font-weight:600;}
+  .field{margin-bottom:16px;}
+  input[type=text],input[type=number],input[type=date],textarea,select{
+    width:100%;border:1px solid var(--line);background:var(--card);
+    border-radius:10px;padding:12px 14px;font-size:16px;color:var(--ink);
+    font-family:inherit;
+  }
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+  textarea{resize:none;min-height:56px;}
+  .amt-currency-row{display:flex;gap:10px;}
+  .amt-input-wrap{position:relative;flex:1;}
+  .amt-input-wrap .cur{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--sub);font-size:16px;pointer-events:none;}
+  .amt-input-wrap input{padding-left:46px;font-size:22px;font-weight:600;width:100%;}
+  .cur-select{
+    width:96px;flex:none;border:1px solid var(--line);background:var(--card);
+    border-radius:10px;padding:12px 8px;font-size:16px;font-weight:600;color:var(--ink);
+    font-family:inherit;text-align:center;
+  }
+  .fx-line{font-size:13px;color:var(--sub);margin-top:8px;min-height:18px;}
+  .fx-line.ok{color:var(--accent);}
+  .fx-line.err{color:var(--danger);}
+  .fx-line.loading{color:var(--gold);}
+  .fx-manual{display:none;margin-top:10px;}
+  .fx-manual.on{display:block;}
+  .fx-manual label{margin-bottom:6px;}
+  .fx-manual input{font-size:16px;}
+
+  .catgrid{display:flex;flex-wrap:wrap;gap:8px;}
+  .catchip{
+    border:1px solid var(--line);background:var(--card);border-radius:20px;
+    padding:8px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:7px;
+  }
+  .catchip.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600;}
+  .catchip .cdot{width:8px;height:8px;border-radius:50%;}
+
+  .sheet-actions{display:flex;gap:10px;margin-top:8px;}
+  .btn-primary{
+    flex:1;background:var(--accent);color:#f4f0e6;border:none;border-radius:12px;
+    padding:15px;font-size:16px;font-weight:600;cursor:pointer;
+  }
+  .btn-primary:disabled{opacity:.4;}
+  .btn-ghost{
+    background:none;border:1px solid var(--line);color:var(--ink);border-radius:12px;
+    padding:15px 20px;font-size:16px;cursor:pointer;
+  }
+
+  .manage-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);}
+  .manage-row .cname{flex:1;}
+  .manage-row input[type=text]{padding:8px 10px;font-size:15px;}
+  .manage-row .rm{background:none;border:none;color:var(--danger);font-size:20px;cursor:pointer;padding:0 4px;}
+  .addcat{display:flex;gap:8px;margin-top:14px;}
+  .addcat input{flex:1;}
+  .addcat button{background:var(--accent);color:#f4f0e6;border:none;border-radius:10px;padding:0 18px;font-size:15px;font-weight:600;cursor:pointer;}
+
+  .toast{
+    position:fixed;bottom:96px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:24px;
+    font-size:14px;z-index:80;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;
+  }
+  .toast.on{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Monthly Expenditure</p>
+    <h1>Ledger</h1>
+    <div class="month-nav">
+      <button class="arrow" id="prevM" aria-label="Previous month">‹</button>
+      <div class="mlabel" id="mLabel">—</div>
+      <button class="arrow" id="nextM" aria-label="Next month">›</button>
+    </div>
+  </header>
+
+  <div class="total-card">
+    <p class="tlabel">Total spent</p>
+    <p class="tamt" id="totAmt">$0</p>
+    <p class="tsub" id="totSub">Across all categories</p>
+    <span class="txn-count" id="txnCount">0 entries</span>
+    <div class="disp-row">
+      <span class="disp-lbl">Show in</span>
+      <select id="dispCur" class="disp-select"></select>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <h2>By category</h2>
+    <span class="hint">this month</span>
+  </div>
+  <div class="card" id="catList"></div>
+
+  <div class="section-head">
+    <h2>Transactions</h2>
+    <span class="hint" id="txnHint"></span>
+  </div>
+  <div class="card" id="txnList"></div>
+
+  <button class="exportbtn" id="exportBtn">⤓ &nbsp;Export month to Excel</button>
+
+  <div class="backup-bar">
+    <button class="mini-btn" id="backupBtn">↧ Back up data</button>
+    <button class="mini-btn" id="restoreBtn">↥ Restore</button>
+  </div>
+  <button class="managebtn" id="manageBtn">Manage categories</button>
+  <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
+</div>
+
+<button class="fab" id="addFab">＋ &nbsp;Add expense</button>
+
+<!-- Add expense sheet -->
+<div class="overlay" id="addOverlay">
+  <div class="sheet">
+    <h3>Add expense</h3>
+    <div class="field">
+      <label>Amount</label>
+      <div class="amt-currency-row">
+        <div class="amt-input-wrap">
+          <span class="cur" id="curSign">S$</span>
+          <input type="number" id="fAmt" inputmode="decimal" placeholder="0.00" step="0.01">
+        </div>
+        <select id="fCur" class="cur-select"></select>
+      </div>
+      <div class="fx-line" id="fxLine"></div>
+      <div class="fx-manual" id="fxManual">
+        <label>Rate — 1 <span id="fxManualCur">JPY</span> = ? SGD</label>
+        <input type="number" id="fRate" inputmode="decimal" placeholder="e.g. 0.0093" step="0.0000001">
+      </div>
+    </div>
+    <div class="field">
+      <label>Name (e.g. restaurant, shop)</label>
+      <input type="text" id="fName" placeholder="Tiong Bahru Bakery">
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <div class="catgrid" id="catChips"></div>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="fDate">
+    </div>
+    <div class="field">
+      <label>Note (optional)</label>
+      <textarea id="fNote" placeholder="Lunch with team"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="cancelAdd">Cancel</button>
+      <button class="btn-primary" id="saveAdd" disabled>Save expense</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage categories sheet -->
+<div class="overlay" id="manageOverlay">
+  <div class="sheet">
+    <h3>Categories</h3>
+    <div id="manageList"></div>
+    <div class="addcat">
+      <input type="text" id="newCatName" placeholder="New category name">
+      <button id="addCatBtn">Add</button>
+    </div>
+    <div class="sheet-actions" style="margin-top:20px;">
+      <button class="btn-primary" id="closeManage">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Currency picker inline in manage (simple) -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Persistent storage ----------
+  const STORE_KEY = "ledger.v1";
+  const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
+
+  const DEFAULT_CATS = [
+    "Rent","Food & groceries","Nights out","Shopping","Utilities & internet",
+    "Gym","Transport","Travel","Phone & subscriptions","Grooming & personal care","Buffer / misc"
+  ];
+
+  // Base currency for the overview + all reporting
+  const BASE = "SGD";
+  const BASE_SYM = "S$";
+  // Currencies offered in the picker (Frankfurter/ECB supported set)
+  const CURRENCIES = ["SGD","MYR","USD","EUR","GBP","JPY","AUD","CNY","HKD","THB","IDR","KRW","CHF","CAD","NZD","INR","PHP","TWD"];
+  const SYM = {SGD:"S$",MYR:"RM",USD:"$",EUR:"€",GBP:"£",JPY:"¥",AUD:"A$",CNY:"¥",HKD:"HK$",THB:"฿",IDR:"Rp",KRW:"₩",CHF:"CHF",CAD:"C$",NZD:"NZ$",INR:"₹",PHP:"₱",TWD:"NT$"};
+  const FX_HOST = "https://api.frankfurter.dev/v1";
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return null;
+  }
+  function persist(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+    catch(e){ toast("Couldn't save — storage blocked"); }
+  }
+
+  let state = load() || {
+    currency:"S$",
+    categories: DEFAULT_CATS.map((n,i)=>({id:cid(), name:n, color:PALETTE[i%PALETTE.length]})),
+    expenses: [] // {id, amount, cur, rate, rateDate, baseAmount, name, catId, date, note}
+  };
+  // migration safety
+  if(!state.categories) state.categories = [];
+  if(!state.expenses) state.expenses = [];
+  if(!state.currency) state.currency = "S$";
+  // migrate pre-currency expenses: assume base currency, rate 1
+  state.expenses.forEach(e=>{
+    if(!e.cur){
+      e.cur = BASE;
+      e.rate = 1;
+      e.rateDate = e.date;
+      e.baseAmount = Number(e.amount);
+    }
+    if(e.baseAmount==null) e.baseAmount = Number(e.amount) * (e.rate||1);
+  });
+
+  function cid(){ return "c"+Math.random().toString(36).slice(2,9); }
+  function eid(){ return "e"+Math.random().toString(36).slice(2,9); }
+
+  // ---------- View state ----------
+  const today = new Date();
+  let viewY = today.getFullYear();
+  let viewM = today.getMonth(); // 0-11
+  let selCat = null;
+  // Overview display currency (base by default). Converts the SGD totals for display only.
+  let dispCur = (state.dispCur && CURRENCIES.includes(state.dispCur)) ? state.dispCur : BASE;
+  let dispRate = 1;        // BASE -> dispCur multiplier
+  let dispRateDate = null; // date of the rate used
+  const rateCache = {};    // cache of latest BASE->cur rates this session
+
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  function num(n, dp){
+    const neg = n<0; n=Math.abs(n);
+    const min = dp!=null ? dp : (n%1===0?0:2);
+    return (neg?"-":"")+n.toLocaleString(undefined,{minimumFractionDigits:min, maximumFractionDigits: dp!=null?dp:2});
+  }
+  // base-currency (SGD) money for totals & reports
+  function fmtMoney(n){ return BASE_SYM+num(n); }
+  // format an amount in an arbitrary currency
+  function fmtCur(n, cur){
+    const sym = SYM[cur]||(cur+" ");
+    const zeroDp = (cur==="JPY"||cur==="KRW"||cur==="IDR");
+    return sym+num(n, zeroDp?0:2);
+  }
+  function baseOf(e){ return Number(e.baseAmount!=null ? e.baseAmount : Number(e.amount)*(e.rate||1)); }
+
+  // Convert a BASE (SGD) amount into the current display currency
+  function toDisp(baseAmt){ return baseAmt * dispRate; }
+  // Format a BASE amount in the current display currency
+  function fmtDisp(baseAmt){ return fmtCur(toDisp(baseAmt), dispCur); }
+
+  // Fetch the latest BASE->dispCur rate (once per session per currency)
+  async function loadDispRate(){
+    if(dispCur===BASE){ dispRate=1; dispRateDate=null; render(); return; }
+    if(rateCache[dispCur]){
+      dispRate = rateCache[dispCur].rate; dispRateDate = rateCache[dispCur].date; render(); return;
+    }
+    const sel = $("dispCur");
+    if(sel) sel.disabled = true;
+    try{
+      const res = await fetch(FX_HOST+"/latest?base="+BASE+"&symbols="+dispCur);
+      if(!res.ok) throw new Error("http "+res.status);
+      const data = await res.json();
+      const rate = data && data.rates && data.rates[dispCur];
+      if(!rate || !isFinite(rate)) throw new Error("no rate");
+      rateCache[dispCur] = {rate:Number(rate), date:data.date||"latest"};
+      dispRate = Number(rate); dispRateDate = data.date||"latest";
+    }catch(err){
+      // fall back to base if we can't fetch
+      toast("Couldn't load "+dispCur+" rate — showing "+BASE);
+      dispCur = BASE; dispRate = 1; dispRateDate = null;
+      if($("dispCur")) $("dispCur").value = BASE;
+      state.dispCur = BASE; persist();
+    }finally{
+      if(sel) sel.disabled = false;
+    }
+    render();
+  }
+  function monthKey(y,m){ return y+"-"+String(m+1).padStart(2,"0"); }
+  function expMonth(e){ const d=new Date(e.date+"T00:00:00"); return monthKey(d.getFullYear(), d.getMonth()); }
+
+  function catById(id){ return state.categories.find(c=>c.id===id) || {name:"Uncategorised", color:"#999"}; }
+
+  function monthExpenses(){
+    const k = monthKey(viewY,viewM);
+    return state.expenses.filter(e=>expMonth(e)===k)
+      .sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }
+
+  // ---------- Render ----------
+  const $ = id=>document.getElementById(id);
+
+  function render(){
+    $("mLabel").textContent = MONTHS[viewM]+" "+viewY;
+    const exps = monthExpenses();
+    const total = exps.reduce((s,e)=>s+baseOf(e),0);
+    $("totAmt").textContent = fmtDisp(total);
+    $("txnCount").textContent = exps.length+(exps.length===1?" entry":" entries");
+    if(dispCur===BASE){
+      $("totSub").textContent = "In "+BASE+" · foreign amounts converted at logged rates";
+    } else {
+      $("totSub").textContent = "Converted from "+BASE+" at "+num(dispRate,4)+" ("+ (dispRateDate||"latest") +")";
+    }
+    $("txnHint").textContent = exps.length? "" : "";
+
+    // category breakdown
+    const byCat = {};
+    exps.forEach(e=>{ byCat[e.catId]=(byCat[e.catId]||0)+baseOf(e); });
+    const cats = Object.keys(byCat).map(id=>({cat:catById(id), amt:byCat[id]}))
+      .sort((a,b)=>b.amt-a.amt);
+    const maxAmt = cats.length? cats[0].amt : 1;
+
+    const cl = $("catList");
+    if(!cats.length){
+      cl.innerHTML = '<div class="empty"><span class="big">No spending yet</span>Add your first expense for this month.</div>';
+    } else {
+      cl.innerHTML = cats.map(c=>{
+        const pct = maxAmt? (c.amt/maxAmt*100):0;
+        return `<div>
+          <div class="cat-row">
+            <span class="dot" style="background:${c.cat.color}"></span>
+            <span class="cat-name">${esc(c.cat.name)}</span>
+            <span class="cat-amt">${fmtDisp(c.amt)}</span>
+          </div>
+          <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%;background:${c.cat.color}"></div></div>
+        </div>`;
+      }).join("");
+    }
+
+    // transactions
+    const tl = $("txnList");
+    if(!exps.length){
+      tl.innerHTML = '<div class="empty"><span class="big">Nothing logged</span>Tap “Add expense” to start.</div>';
+    } else {
+      tl.innerHTML = exps.map(e=>{
+        const cat = catById(e.catId);
+        const d = new Date(e.date+"T00:00:00");
+        const ds = d.toLocaleDateString(undefined,{day:"numeric",month:"short"});
+        return `<div class="txn">
+          <span class="dot" style="background:${cat.color};margin-top:6px"></span>
+          <div class="meta">
+            <p class="name">${esc(e.name||cat.name)}</p>
+            <p class="tags">${esc(cat.name)} · ${ds}</p>
+            ${e.note?`<p class="note">${esc(e.note)}</p>`:""}
+          </div>
+          <div class="right">
+            <div class="amt">${fmtMoney(baseOf(e))}</div>
+            ${e.cur && e.cur!==BASE ? `<div class="orig">${fmtCur(Number(e.amount), e.cur)}</div>` : ""}
+            <button class="del" data-del="${e.id}">Delete</button>
+          </div>
+        </div>`;
+      }).join("");
+    }
+  }
+
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+
+  // ---------- Add expense sheet ----------
+  // FX working state for the open sheet
+  let fx = { cur:BASE, rate:1, rateDate:null, status:"base", token:0 };
+
+  function renderChips(){
+    const wrap = $("catChips");
+    wrap.innerHTML = state.categories.map(c=>
+      `<div class="catchip${selCat===c.id?" sel":""}" data-cat="${c.id}">
+        <span class="cdot" style="background:${c.color}"></span>${esc(c.name)}
+      </div>`).join("");
+  }
+  function buildCurSelect(){
+    const sel = $("fCur");
+    sel.innerHTML = CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join("");
+    sel.value = BASE;
+    const dsel = $("dispCur");
+    dsel.innerHTML = CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join("");
+    dsel.value = dispCur;
+  }
+  function openAdd(){
+    selCat = state.categories.length? state.categories[0].id : null;
+    $("fAmt").value=""; $("fName").value=""; $("fNote").value=""; $("fRate").value="";
+    $("fDate").value = new Date(viewY,viewM, Math.min(today.getDate(), daysIn(viewY,viewM)))
+      .toISOString().slice(0,10);
+    if(viewY===today.getFullYear() && viewM===today.getMonth()){
+      $("fDate").value = today.toISOString().slice(0,10);
+    }
+    $("fCur").value = BASE;
+    fx = { cur:BASE, rate:1, rateDate:null, status:"base", token:0 };
+    updateCurUI();
+    renderChips();
+    validate();
+    $("addOverlay").classList.add("on");
+    setTimeout(()=>$("fAmt").focus(),120);
+  }
+  function daysIn(y,m){ return new Date(y,m+1,0).getDate(); }
+  function closeAdd(){ $("addOverlay").classList.remove("on"); }
+
+  function updateCurUI(){
+    const cur = $("fCur").value;
+    $("curSign").textContent = SYM[cur]||cur;
+    $("fxManualCur").textContent = cur;
+    const line = $("fxLine");
+    const manual = $("fxManual");
+    if(cur===BASE){
+      manual.classList.remove("on");
+      line.className="fx-line"; line.textContent="";
+      return;
+    }
+    // non-base: reflect current fx status
+    if(fx.status==="loading"){
+      line.className="fx-line loading"; line.textContent="Fetching "+cur+"→"+BASE+" rate…";
+      manual.classList.remove("on");
+    } else if(fx.status==="ok"){
+      line.className="fx-line ok";
+      line.textContent = "1 "+cur+" = "+num(fx.rate,4)+" "+BASE+"  ·  rate of "+fx.rateDate;
+      manual.classList.remove("on");
+      showEquiv();
+    } else if(fx.status==="manual"){
+      line.className="fx-line err";
+      line.textContent = "Couldn't fetch a rate — enter it manually below.";
+      manual.classList.add("on");
+    }
+  }
+  function showEquiv(){
+    const amt = Number($("fAmt").value);
+    const line = $("fxLine");
+    if(amt>0 && fx.status==="ok"){
+      line.textContent = fmtCur(amt,fx.cur)+" = "+fmtMoney(amt*fx.rate)
+        +"  ·  1 "+fx.cur+" = "+num(fx.rate,4)+" "+BASE+" ("+fx.rateDate+")";
+    }
+  }
+
+  // Fetch ECB rate for cur→BASE on a given date (falls back to latest available)
+  async function fetchRate(){
+    const cur = $("fCur").value;
+    const date = $("fDate").value;
+    if(cur===BASE){ fx={cur:BASE,rate:1,rateDate:date,status:"base",token:fx.token}; updateCurUI(); validate(); return; }
+    const myToken = ++fx.token;
+    fx = {cur, rate:null, rateDate:null, status:"loading", token:myToken};
+    updateCurUI();
+    try{
+      // Frankfurter returns the rate for the date, or most recent prior trading day
+      const url = FX_HOST+"/"+date+"?base="+cur+"&symbols="+BASE;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("http "+res.status);
+      const data = await res.json();
+      if(myToken!==fx.token) return; // superseded by a newer request
+      const rate = data && data.rates && data.rates[BASE];
+      if(!rate || !isFinite(rate)) throw new Error("no rate");
+      fx = {cur, rate:Number(rate), rateDate:data.date||date, status:"ok", token:myToken};
+      updateCurUI(); validate();
+    }catch(err){
+      if(myToken!==fx.token) return;
+      fx = {cur, rate:null, rateDate:null, status:"manual", token:myToken};
+      updateCurUI(); validate();
+    }
+  }
+
+  // debounce rate fetching on amount/date/cur changes
+  let fxTimer;
+  function scheduleRate(){
+    clearTimeout(fxTimer);
+    fxTimer = setTimeout(fetchRate, 250);
+  }
+
+  function resolvedRate(){
+    const cur = $("fCur").value;
+    if(cur===BASE) return {rate:1, rateDate:$("fDate").value, ok:true};
+    if(fx.status==="ok") return {rate:fx.rate, rateDate:fx.rateDate, ok:true};
+    if(fx.status==="manual"){
+      const r = Number($("fRate").value);
+      if(r>0) return {rate:r, rateDate:$("fDate").value+" (manual)", ok:true};
+    }
+    return {ok:false};
+  }
+
+  function validate(){
+    const amtOk = Number($("fAmt").value)>0;
+    const rr = resolvedRate();
+    $("saveAdd").disabled = !(amtOk && selCat && rr.ok);
+  }
+
+  function saveExpense(){
+    const amt = Number($("fAmt").value);
+    const cur = $("fCur").value;
+    const rr = resolvedRate();
+    if(!(amt>0) || !selCat || !rr.ok) return;
+    const baseAmount = round2(amt * rr.rate);
+    state.expenses.push({
+      id:eid(), amount:amt, cur, rate:rr.rate, rateDate:rr.rateDate,
+      baseAmount, name:$("fName").value.trim(),
+      catId:selCat, date:$("fDate").value || today.toISOString().slice(0,10),
+      note:$("fNote").value.trim()
+    });
+    persist();
+    const d = new Date(($("fDate").value)+"T00:00:00");
+    viewY=d.getFullYear(); viewM=d.getMonth();
+    closeAdd(); render(); toast("Expense saved");
+  }
+
+  // ---------- Manage categories ----------
+  function openManage(){ renderManage(); $("manageOverlay").classList.add("on"); }
+  function closeManage(){ $("manageOverlay").classList.remove("on"); render(); }
+  function renderManage(){
+    const wrap = $("manageList");
+    wrap.innerHTML = state.categories.map(c=>
+      `<div class="manage-row" data-row="${c.id}">
+        <span class="dot" style="background:${c.color}"></span>
+        <input type="text" class="cname" data-name="${c.id}" value="${esc(c.name)}">
+        <button class="rm" data-rm="${c.id}" title="Remove">×</button>
+      </div>`).join("");
+  }
+  function addCategory(){
+    const name = $("newCatName").value.trim();
+    if(!name) return;
+    const color = PALETTE[state.categories.length % PALETTE.length];
+    state.categories.push({id:cid(), name, color});
+    $("newCatName").value="";
+    persist(); renderManage();
+  }
+  function removeCategory(id){
+    const used = state.expenses.some(e=>e.catId===id);
+    if(used){
+      if(!confirm("Some expenses use this category. Remove it anyway? Those expenses stay but show as uncategorised.")) return;
+    }
+    state.categories = state.categories.filter(c=>c.id!==id);
+    persist(); renderManage();
+  }
+
+  // ---------- Excel export ----------
+  function exportMonth(){
+    const exps = monthExpenses();
+    if(!exps.length){ toast("Nothing to export this month"); return; }
+    const label = MONTHS[viewM]+" "+viewY;
+
+    // Summary sheet: category totals + share, all in base currency (SGD)
+    const byCat = {};
+    exps.forEach(e=>{ byCat[e.catId]=(byCat[e.catId]||0)+baseOf(e); });
+    const total = exps.reduce((s,e)=>s+baseOf(e),0);
+    const catRows = Object.keys(byCat)
+      .map(id=>({name:catById(id).name, amt:byCat[id]}))
+      .sort((a,b)=>b.amt-a.amt);
+
+    const summaryAoA = [
+      ["Monthly Expenditure — "+label],
+      ["All amounts in "+BASE],
+      [],
+      ["Category", "Amount ("+BASE+")", "Share of total"]
+    ];
+    catRows.forEach(r=>{
+      summaryAoA.push([r.name, round2(r.amt), total? r.amt/total : 0]);
+    });
+    summaryAoA.push(["TOTAL", round2(total), total?1:0]);
+    summaryAoA.push([]);
+    summaryAoA.push(["Entries", exps.length]);
+    summaryAoA.push(["Generated", new Date().toLocaleString()]);
+
+    const wsS = XLSX.utils.aoa_to_sheet(summaryAoA);
+    wsS["!cols"] = [{wch:26},{wch:16},{wch:14}];
+    const headRow = 4; // 1-indexed row of the "Category" header
+    for(let i=headRow+1;i<=headRow+catRows.length+1;i++){
+      const share = wsS["C"+i]; if(share) share.z = "0.0%";
+      const amt = wsS["B"+i]; if(amt) amt.z = "#,##0.00";
+    }
+
+    // Transactions sheet — original currency + FX + base equivalent
+    const txnAoA = [["Date","Name","Category","Currency","Amount","FX rate (1 ccy → "+BASE+")","Rate date",BASE+" equivalent","Note"]];
+    exps.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{
+      txnAoA.push([
+        e.date, e.name||"", catById(e.catId).name,
+        e.cur||BASE, round2(Number(e.amount)),
+        e.rate!=null? Number(e.rate) : 1,
+        e.rateDate||e.date,
+        round2(baseOf(e)), e.note||""
+      ]);
+    });
+    const wsT = XLSX.utils.aoa_to_sheet(txnAoA);
+    wsT["!cols"] = [{wch:12},{wch:24},{wch:20},{wch:9},{wch:12},{wch:20},{wch:16},{wch:14},{wch:26}];
+    for(let i=2;i<=exps.length+1;i++){
+      const amt = wsT["E"+i]; if(amt) amt.z = "#,##0.00";
+      const rate = wsT["F"+i]; if(rate) rate.z = "#,##0.000000";
+      const beq = wsT["H"+i]; if(beq) beq.z = "#,##0.00";
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsS, "Summary");
+    XLSX.utils.book_append_sheet(wb, wsT, "Transactions");
+    const fname = "Expenditure_"+label.replace(" ","_")+".xlsx";
+    XLSX.writeFile(wb, fname);
+    toast("Excel exported");
+  }
+  function round2(n){ return Math.round(n*100)/100; }
+
+  // ---------- Backup / Restore ----------
+  function backup(){
+    const payload = {
+      _format:"ledger-backup",
+      _version:1,
+      _exportedAt:new Date().toISOString(),
+      data: state
+    };
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = "ledger-backup_"+stamp+".json";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    toast("Backup saved");
+  }
+
+  function restore(file){
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      let parsed;
+      try{ parsed = JSON.parse(reader.result); }
+      catch(e){ toast("Not a valid backup file"); return; }
+      // accept either the wrapped backup or a raw state object
+      const incoming = (parsed && parsed._format==="ledger-backup" && parsed.data) ? parsed.data : parsed;
+      if(!incoming || !Array.isArray(incoming.categories) || !Array.isArray(incoming.expenses)){
+        toast("File doesn't look like a Ledger backup"); return;
+      }
+      const n = incoming.expenses.length;
+      if(!confirm("Restore "+n+" expense"+(n===1?"":"s")+" from this backup? This replaces everything currently in the app.")) return;
+      state = {
+        currency: incoming.currency || "S$",
+        categories: incoming.categories,
+        expenses: incoming.expenses
+      };
+      // ensure currency/base fields exist on any legacy entries
+      state.expenses.forEach(e=>{
+        if(!e.cur){ e.cur=BASE; e.rate=1; e.rateDate=e.date; e.baseAmount=Number(e.amount); }
+        if(e.baseAmount==null) e.baseAmount = Number(e.amount)*(e.rate||1);
+      });
+      persist();
+      render();
+      toast("Restored "+n+" entr"+(n===1?"y":"ies"));
+    };
+    reader.onerror = ()=>toast("Couldn't read that file");
+    reader.readAsText(file);
+  }
+
+  // ---------- Toast ----------
+  let toastT;
+  function toast(msg){
+    const t=$("toast"); t.textContent=msg; t.classList.add("on");
+    clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"),1800);
+  }
+
+  // ---------- Events ----------
+  $("prevM").onclick=()=>{ viewM--; if(viewM<0){viewM=11;viewY--;} render(); };
+  $("nextM").onclick=()=>{ viewM++; if(viewM>11){viewM=0;viewY++;} render(); };
+  $("addFab").onclick=openAdd;
+  $("cancelAdd").onclick=closeAdd;
+  $("saveAdd").onclick=saveExpense;
+  $("fAmt").oninput=()=>{ if(fx.status==="ok") showEquiv(); validate(); };
+  $("fCur").onchange=()=>{ scheduleRate(); updateCurUI(); validate(); };
+  $("fDate").onchange=()=>{ if($("fCur").value!==BASE) scheduleRate(); };
+  $("fRate").oninput=()=>{ validate(); };
+  $("addOverlay").onclick=(e)=>{ if(e.target===$("addOverlay")) closeAdd(); };
+  $("catChips").onclick=(e)=>{
+    const chip=e.target.closest("[data-cat]"); if(!chip) return;
+    selCat=chip.getAttribute("data-cat"); renderChips(); validate();
+  };
+  $("exportBtn").onclick=exportMonth;
+  $("dispCur").onchange=()=>{
+    dispCur = $("dispCur").value;
+    state.dispCur = dispCur; persist();
+    loadDispRate();
+  };
+  $("backupBtn").onclick=backup;
+  $("restoreBtn").onclick=()=>$("restoreFile").click();
+  $("restoreFile").onchange=(e)=>{
+    const f=e.target.files && e.target.files[0];
+    if(f) restore(f);
+    e.target.value=""; // allow re-selecting same file later
+  };
+  $("manageBtn").onclick=openManage;
+  $("closeManage").onclick=closeManage;
+  $("addCatBtn").onclick=addCategory;
+  $("newCatName").onkeydown=(e)=>{ if(e.key==="Enter") addCategory(); };
+  $("manageOverlay").onclick=(e)=>{ if(e.target===$("manageOverlay")) closeManage(); };
+  $("manageList").addEventListener("click",(e)=>{
+    const rm=e.target.closest("[data-rm]"); if(rm){ removeCategory(rm.getAttribute("data-rm")); }
+  });
+  $("manageList").addEventListener("change",(e)=>{
+    const inp=e.target.closest("[data-name]");
+    if(inp){
+      const id=inp.getAttribute("data-name");
+      const c=state.categories.find(x=>x.id===id);
+      if(c){ c.name=inp.value.trim()||c.name; persist(); render(); }
+    }
+  });
+  $("txnList").addEventListener("click",(e)=>{
+    const d=e.target.closest("[data-del]"); if(!d) return;
+    const id=d.getAttribute("data-del");
+    state.expenses=state.expenses.filter(x=>x.id!==id);
+    persist(); render(); toast("Deleted");
+  });
+
+  buildCurSelect();
+  render();
+  if(dispCur!==BASE) loadDispRate();
+})();
+</script>
+</body>
+</html>
