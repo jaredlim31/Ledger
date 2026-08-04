@@ -113,7 +113,10 @@
   .txn .right{text-align:right;flex:none;}
   .txn .amt{font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;}
   .txn .orig{font-variant-numeric:tabular-nums;font-size:12px;color:var(--sub);margin-top:1px;}
-  .txn .del{font-size:12px;color:var(--danger);background:none;border:none;padding:4px 0 0;cursor:pointer;}
+  .txn .rowbtns{display:flex;gap:10px;justify-content:flex-end;margin-top:4px;}
+  .txn .edit{font-size:12px;color:var(--accent);background:none;border:none;padding:0;cursor:pointer;}
+  .txn .del{font-size:12px;color:var(--danger);background:none;border:none;padding:0;cursor:pointer;}
+  .txn .meta.tap{cursor:pointer;}
 
   .empty{
     text-align:center;color:var(--sub);padding:40px 20px;font-size:14px;
@@ -278,7 +281,7 @@
 <!-- Add expense sheet -->
 <div class="overlay" id="addOverlay">
   <div class="sheet">
-    <h3>Add expense</h3>
+    <h3 id="sheetTitle">Add expense</h3>
     <div class="field">
       <label>Amount</label>
       <div class="amt-currency-row">
@@ -344,8 +347,8 @@
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
   const DEFAULT_CATS = [
-    "Rent","Food & dining","Groceries","Nights out","Shopping","Utilities & internet",
-    "Gym","Transport","Travel","Phone & subscriptions","Grooming & personal care","Buffer / misc"
+    "Rent","Food & Dining","Nights Out","Shopping","Utilities, Internet & Insurance",
+    "Lifestyle","Transport","Groceries","Phone & subscriptions","Grooming & personal care","Buffer / misc"
   ];
 
   // Base currency for the overview + all reporting
@@ -387,20 +390,6 @@
     }
     if(e.baseAmount==null) e.baseAmount = Number(e.amount) * (e.rate||1);
   });
-  // split "Food & groceries" -> "Food & dining", add "Groceries". Reused on load and restore.
-  function migrateFoodSplit(){
-    const old = state.categories.find(c=>c.name==="Food & groceries");
-    if(old){
-      old.name = "Food & dining";
-      const hasGroceries = state.categories.some(c=>c.name==="Groceries");
-      if(!hasGroceries){
-        const color = PALETTE[state.categories.length % PALETTE.length];
-        state.categories.push({id:cid(), name:"Groceries", color});
-      }
-      persist();
-    }
-  }
-  migrateFoodSplit();
 
   function cid(){ return "c"+Math.random().toString(36).slice(2,9); }
   function eid(){ return "e"+Math.random().toString(36).slice(2,9); }
@@ -410,6 +399,7 @@
   let viewY = today.getFullYear();
   let viewM = today.getMonth(); // 0-11
   let selCat = null;
+  let editingId = null; // id of expense being edited, or null when adding
   // Overview display currency (base by default). Converts the SGD totals for display only.
   let dispCur = (state.dispCur && CURRENCIES.includes(state.dispCur)) ? state.dispCur : BASE;
   let dispRate = 1;        // BASE -> dispCur multiplier
@@ -527,7 +517,7 @@
         const ds = d.toLocaleDateString(undefined,{day:"numeric",month:"short"});
         return `<div class="txn">
           <span class="dot" style="background:${cat.color};margin-top:6px"></span>
-          <div class="meta">
+          <div class="meta tap" data-edit="${e.id}">
             <p class="name">${esc(e.name||cat.name)}</p>
             <p class="tags">${esc(cat.name)} · ${ds}</p>
             ${e.note?`<p class="note">${esc(e.note)}</p>`:""}
@@ -535,7 +525,10 @@
           <div class="right">
             <div class="amt">${fmtMoney(baseOf(e))}</div>
             ${e.cur && e.cur!==BASE ? `<div class="orig">${fmtCur(Number(e.amount), e.cur)}</div>` : ""}
-            <button class="del" data-del="${e.id}">Delete</button>
+            <div class="rowbtns">
+              <button class="edit" data-edit="${e.id}">Edit</button>
+              <button class="del" data-del="${e.id}">Delete</button>
+            </div>
           </div>
         </div>`;
       }).join("");
@@ -564,6 +557,9 @@
     dsel.value = dispCur;
   }
   function openAdd(){
+    editingId = null;
+    $("sheetTitle").textContent = "Add expense";
+    $("saveAdd").textContent = "Save expense";
     selCat = state.categories.length? state.categories[0].id : null;
     $("fAmt").value=""; $("fName").value=""; $("fNote").value=""; $("fRate").value="";
     $("fDate").value = new Date(viewY,viewM, Math.min(today.getDate(), daysIn(viewY,viewM)))
@@ -579,8 +575,34 @@
     $("addOverlay").classList.add("on");
     setTimeout(()=>$("fAmt").focus(),120);
   }
+  function openEdit(id){
+    const e = state.expenses.find(x=>x.id===id);
+    if(!e) return;
+    editingId = id;
+    $("sheetTitle").textContent = "Edit expense";
+    $("saveAdd").textContent = "Save changes";
+    selCat = e.catId;
+    $("fAmt").value = e.amount;
+    $("fName").value = e.name||"";
+    $("fNote").value = e.note||"";
+    $("fRate").value = "";
+    $("fDate").value = e.date;
+    $("fCur").value = e.cur||BASE;
+    if((e.cur||BASE)===BASE){
+      fx = { cur:BASE, rate:1, rateDate:null, status:"base", token:0 };
+      updateCurUI();
+    } else {
+      // seed with the entry's locked rate, then re-fetch for the (possibly edited) date
+      fx = { cur:e.cur, rate:e.rate, rateDate:e.rateDate, status:"ok", token:0 };
+      updateCurUI();
+      scheduleRate();
+    }
+    renderChips();
+    validate();
+    $("addOverlay").classList.add("on");
+  }
   function daysIn(y,m){ return new Date(y,m+1,0).getDate(); }
-  function closeAdd(){ $("addOverlay").classList.remove("on"); }
+  function closeAdd(){ editingId=null; $("addOverlay").classList.remove("on"); }
 
   function updateCurUI(){
     const cur = $("fCur").value;
@@ -673,16 +695,30 @@
     const rr = resolvedRate();
     if(!(amt>0) || !selCat || !rr.ok) return;
     const baseAmount = round2(amt * rr.rate);
-    state.expenses.push({
-      id:eid(), amount:amt, cur, rate:rr.rate, rateDate:rr.rateDate,
-      baseAmount, name:$("fName").value.trim(),
-      catId:selCat, date:$("fDate").value || today.toISOString().slice(0,10),
-      note:$("fNote").value.trim()
-    });
-    persist();
-    const d = new Date(($("fDate").value)+"T00:00:00");
-    viewY=d.getFullYear(); viewM=d.getMonth();
-    closeAdd(); render(); toast("Expense saved");
+    const date = $("fDate").value || today.toISOString().slice(0,10);
+    if(editingId){
+      const e = state.expenses.find(x=>x.id===editingId);
+      if(e){
+        e.amount=amt; e.cur=cur; e.rate=rr.rate; e.rateDate=rr.rateDate;
+        e.baseAmount=baseAmount; e.name=$("fName").value.trim();
+        e.catId=selCat; e.date=date; e.note=$("fNote").value.trim();
+      }
+      persist();
+      const d = new Date(date+"T00:00:00");
+      viewY=d.getFullYear(); viewM=d.getMonth();
+      editingId=null;
+      closeAdd(); render(); toast("Changes saved");
+    } else {
+      state.expenses.push({
+        id:eid(), amount:amt, cur, rate:rr.rate, rateDate:rr.rateDate,
+        baseAmount, name:$("fName").value.trim(),
+        catId:selCat, date, note:$("fNote").value.trim()
+      });
+      persist();
+      const d = new Date(date+"T00:00:00");
+      viewY=d.getFullYear(); viewM=d.getMonth();
+      closeAdd(); render(); toast("Expense saved");
+    }
   }
 
   // ---------- Manage categories ----------
@@ -821,7 +857,6 @@
         if(!e.cur){ e.cur=BASE; e.rate=1; e.rateDate=e.date; e.baseAmount=Number(e.amount); }
         if(e.baseAmount==null) e.baseAmount = Number(e.amount)*(e.rate||1);
       });
-      migrateFoodSplit(); // re-apply category split if an old backup was restored
       dispCur = state.dispCur; if($("dispCur")) $("dispCur").value = dispCur;
       persist();
       render();
@@ -884,6 +919,8 @@
     }
   });
   $("txnList").addEventListener("click",(e)=>{
+    const ed=e.target.closest("[data-edit]");
+    if(ed){ openEdit(ed.getAttribute("data-edit")); return; }
     const d=e.target.closest("[data-del]"); if(!d) return;
     const id=d.getAttribute("data-del");
     state.expenses=state.expenses.filter(x=>x.id!==id);
