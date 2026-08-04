@@ -348,7 +348,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-6"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-7"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -506,7 +506,6 @@
     } else {
       $("totSub").textContent = "In "+dispCur+" · native "+dispCur+" amounts used directly, others at "+num(dispRate,4);
     }
-    $("txnHint").textContent = exps.length? "" : "";
 
     // category breakdown (in display currency, native passthrough)
     const byCat = {};
