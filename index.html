@@ -348,7 +348,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-5"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-6"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -416,9 +416,16 @@
   const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
   function num(n, dp){
+    n = Number(n);
+    if(!isFinite(n)) n = 0; // guard against NaN/undefined so rendering never breaks
     const neg = n<0; n=Math.abs(n);
-    const min = dp!=null ? dp : (n%1===0?0:2);
-    return (neg?"-":"")+n.toLocaleString(undefined,{minimumFractionDigits:min, maximumFractionDigits: dp!=null?dp:2});
+    let maxd = dp!=null ? dp : 2;
+    let mind = dp!=null ? dp : (n%1===0?0:2);
+    if(mind>maxd) mind = maxd; // toLocaleString throws if min>max
+    let body;
+    try{ body = n.toLocaleString(undefined,{minimumFractionDigits:mind, maximumFractionDigits:maxd}); }
+    catch(e){ body = n.toFixed(maxd); }
+    return (neg?"-":"")+body;
   }
   // base-currency (SGD) money for totals & reports
   function fmtMoney(n){ return BASE_SYM+num(n); }
@@ -488,6 +495,7 @@
   const $ = id=>document.getElementById(id);
 
   function render(){
+   try{
     $("mLabel").textContent = MONTHS[viewM]+" "+viewY;
     const exps = monthExpenses();
     const total = exps.reduce((s,e)=>s+dispValueOf(e),0);
@@ -557,6 +565,7 @@
       }).join("");
     }
     try{ buildFilter(); }catch(err){ /* filter is non-critical; never let it blank the UI */ }
+   }catch(err){ try{ toast("Render error: "+(err&&err.message?err.message:err)); }catch(_){} }
   }
 
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
