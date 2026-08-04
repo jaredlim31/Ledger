@@ -343,6 +343,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
+  const APP_VERSION = "2026-08-04-1"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -815,18 +816,42 @@
   function round2(n){ return Math.round(n*100)/100; }
 
   // ---------- Backup / Restore ----------
-  function backup(){
+  let saveHandle = null; // remembered file handle for one-tap re-save (where supported)
+  async function backup(){
     const payload = {
       _format:"ledger-backup",
       _version:1,
       _exportedAt:new Date().toISOString(),
       data: state
     };
-    const blob = new Blob([JSON.stringify(payload,null,2)], {type:"application/json"});
+    const json = JSON.stringify(payload,null,2);
+    const stamp = new Date().toISOString().slice(0,10);
+    const fname = "ledger-backup_"+stamp+".json";
+
+    // Preferred: File System Access API — remembers location, true one-tap re-save
+    if(window.showSaveFilePicker){
+      try{
+        if(!saveHandle){
+          saveHandle = await window.showSaveFilePicker({
+            suggestedName: fname,
+            types:[{description:"JSON backup", accept:{"application/json":[".json"]}}]
+          });
+        }
+        const w = await saveHandle.createWritable();
+        await w.write(json);
+        await w.close();
+        toast("Backup saved");
+        return;
+      }catch(e){
+        if(e && e.name==="AbortError") return; // user cancelled
+        saveHandle = null; // fall through to download
+      }
+    }
+    // Fallback: trigger a download (iOS Safari path)
+    const blob = new Blob([json], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const stamp = new Date().toISOString().slice(0,10);
-    a.href = url; a.download = "ledger-backup_"+stamp+".json";
+    a.href = url; a.download = fname;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
@@ -930,6 +955,61 @@
   buildCurSelect();
   render();
   if(dispCur!==BASE) loadDispRate();
+
+  // ---------- Auto-update: check server for a newer build on launch ----------
+  async function checkForUpdate(){
+    // don't interrupt an open form
+    if($("addOverlay").classList.contains("on") || $("manageOverlay").classList.contains("on")) return;
+    try{
+      const url = location.pathname + "?_=" + Date.now(); // bypass cache
+      const res = await fetch(url, {cache:"no-store"});
+      if(!res.ok) return;
+      const txt = await res.text();
+      const m = txt.match(/APP_VERSION\s*=\s*"([^"]+)"/);
+      if(m && m[1] && m[1] !== APP_VERSION){
+        toast("Updating to the latest version…");
+        setTimeout(()=>location.reload(true), 900);
+      }
+    }catch(e){ /* offline or blocked — silently skip */ }
+  }
+  checkForUpdate();
+  // also re-check when the app is brought back to foreground
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) checkForUpdate(); });
+
+  // ---------- Pull-to-refresh ----------
+  (function pullToRefresh(){
+    let startY = 0, pulling = false, ind = null;
+    function makeInd(){
+      if(ind) return ind;
+      ind = document.createElement("div");
+      ind.textContent = "↓ Pull to refresh";
+      ind.style.cssText = "position:fixed;top:0;left:0;right:0;text-align:center;padding:10px;font-size:13px;color:var(--sub);background:var(--paper);transform:translateY(-100%);transition:transform .1s;z-index:70;";
+      document.body.appendChild(ind);
+      return ind;
+    }
+    window.addEventListener("touchstart",(e)=>{
+      if(window.scrollY<=0 && !$("addOverlay").classList.contains("on") && !$("manageOverlay").classList.contains("on")){
+        startY = e.touches[0].clientY; pulling = true;
+      } else pulling = false;
+    }, {passive:true});
+    window.addEventListener("touchmove",(e)=>{
+      if(!pulling) return;
+      const dy = e.touches[0].clientY - startY;
+      if(dy>0){
+        const el = makeInd();
+        const pull = Math.min(dy, 90);
+        el.style.transform = "translateY("+(pull-100)+"%)";
+        el.textContent = pull>70 ? "↑ Release to refresh" : "↓ Pull to refresh";
+      }
+    }, {passive:true});
+    window.addEventListener("touchend",(e)=>{
+      if(!pulling){ if(ind) ind.style.transform="translateY(-100%)"; return; }
+      pulling = false;
+      const dy = (e.changedTouches[0].clientY - startY);
+      if(ind) ind.style.transform="translateY(-100%)";
+      if(dy>70){ location.reload(true); }
+    }, {passive:true});
+  })();
 })();
 </script>
 </body>
