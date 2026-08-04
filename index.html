@@ -275,10 +275,10 @@
 
   <div class="backup-bar">
     <button class="mini-btn" id="backupBtn">↧ Back up data</button>
-    <button class="mini-btn" id="restoreBtn">↥ Restore</button>
+    <label class="mini-btn" id="restoreBtn" for="restoreFile" role="button">↥ Restore</label>
   </div>
   <button class="managebtn" id="manageBtn">Manage categories</button>
-  <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
+  <input type="file" id="restoreFile" accept=".json,application/json,text/plain,*/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
 </div>
 
 <button class="fab" id="addFab">＋ &nbsp;Add expense</button>
@@ -348,7 +348,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-3"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-4"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -901,7 +901,11 @@
         toast("File doesn't look like a Ledger backup"); return;
       }
       const n = incoming.expenses.length;
-      if(!confirm("Restore "+n+" expense"+(n===1?"":"s")+" from this backup? This replaces everything currently in the app.")) return;
+      // confirm() can be blocked in iOS standalone mode; if so, proceed (file pick was intentional)
+      let ok = true;
+      try{ ok = confirm("Restore "+n+" expense"+(n===1?"":"s")+" from this backup? This replaces everything currently in the app."); }
+      catch(err){ ok = true; }
+      if(!ok) return;
       state = {
         currency: incoming.currency || "S$",
         dispCur: (incoming.dispCur && CURRENCIES.includes(incoming.dispCur)) ? incoming.dispCur : BASE,
@@ -953,7 +957,6 @@
     loadDispRate();
   };
   $("backupBtn").onclick=backup;
-  $("restoreBtn").onclick=()=>$("restoreFile").click();
   $("restoreFile").onchange=(e)=>{
     const f=e.target.files && e.target.files[0];
     if(f) restore(f);
