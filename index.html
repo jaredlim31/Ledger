@@ -123,6 +123,12 @@
   .txn .tags{font-size:12.5px;color:var(--sub);margin:2px 0 0;}
   .txn .note{font-size:12.5px;color:var(--sub);font-style:italic;margin:3px 0 0;}
   .series-badge{background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:600;white-space:nowrap;}
+  .show-more{width:100%;background:none;border:none;color:var(--accent);font-size:14px;font-weight:600;padding:14px;cursor:pointer;margin-top:4px;}
+  .txn{ -webkit-user-select:none; user-select:none; }
+  .row-actions{display:flex;gap:10px;margin-top:12px;}
+  .row-actions button{flex:1;padding:14px;border-radius:12px;font-size:15px;font-weight:600;border:none;cursor:pointer;}
+  .ra-edit{background:var(--accent-soft);color:var(--accent);}
+  .ra-del{background:#f3ddd6;color:var(--danger);}
   .txn .right{text-align:right;flex:none;}
   .txn .amt{font-variant-numeric:tabular-nums;font-weight:600;font-size:15px;}
   .txn .orig{font-variant-numeric:tabular-nums;font-size:12px;color:var(--sub);margin-top:1px;}
@@ -233,7 +239,8 @@
   .budget-wrap{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:8px;padding:0 6px;background:var(--card);}
   .manage-hint{font-size:12px;color:var(--sub);margin:-8px 0 14px;}
   .budget-sym{font-size:12px;color:var(--sub);}
-  .cbudget{width:64px;border:none;background:transparent;padding:8px 2px;font-size:14px;font-variant-numeric:tabular-nums;}
+  .cat-pct{font-size:11px;color:var(--sub);font-weight:400;}
+  .cbudget{width:44px;border:none;background:transparent;padding:7px 2px;font-size:13px;font-variant-numeric:tabular-nums;}
   .cbudget:focus{outline:none;}
   .manage-row input[type=text]{padding:8px 10px;font-size:15px;}
   .manage-row .rm{background:none;border:none;color:var(--danger);font-size:20px;cursor:pointer;padding:0 4px;}
@@ -247,12 +254,40 @@
     font-size:14px;z-index:80;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;
   }
   .toast.on{opacity:1;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .icon-btn{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:17px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex:none;
+  }
+  .icon-btn:active{background:var(--accent-soft);}
+  .overlay.side{align-items:stretch;justify-content:flex-start;}
+  .side-panel{
+    background:var(--paper);width:76%;max-width:320px;height:100%;
+    padding:20px 16px calc(20px + env(safe-area-inset-bottom));
+    box-shadow:2px 0 20px rgba(18,16,12,.2);
+    animation:slidein .2s ease;overflow-y:auto;
+    display:flex;flex-direction:column;gap:4px;
+  }
+  @keyframes slidein{from{transform:translateX(-30px);opacity:.6;}to{transform:translateX(0);opacity:1;}}
+  .side-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .side-head span{font-family:Georgia,serif;font-size:20px;font-weight:600;}
+  .side-item{
+    text-align:left;background:none;border:none;color:var(--ink);
+    padding:14px 12px;font-size:15px;border-radius:10px;cursor:pointer;width:100%;
+  }
+  .side-item:active{background:var(--accent-soft);}
+  .side-sep{height:1px;background:var(--line);margin:6px 4px;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <p class="eyebrow">Monthly Expenditure</p>
+    <div class="topbar">
+      <button class="icon-btn" id="menuBtn" aria-label="Menu">☰</button>
+      <p class="eyebrow" style="margin:0;">Monthly Expenditure</p>
+      <button class="icon-btn" id="thisMonthBtn" aria-label="Jump to this month" title="This month">⦿</button>
+    </div>
     <h1>Ledger</h1>
     <div class="month-nav">
       <button class="arrow" id="prevM" aria-label="Previous month">‹</button>
@@ -274,7 +309,7 @@
 
   <div class="section-head">
     <h2>Spending trend</h2>
-    <span class="hint">last 6 months</span>
+    <span class="hint">last 3 months</span>
   </div>
   <div class="card" id="trendChart"></div>
 
@@ -291,17 +326,56 @@
   <input type="text" id="txnSearch" class="txn-search" placeholder="Search name or note…">
   <div class="card" id="txnList"></div>
 
-  <button class="exportbtn" id="exportBtn">⤓ &nbsp;Export month to Excel</button>
-
-  <div class="backup-bar">
-    <button class="mini-btn" id="backupBtn">↧ Back up data</button>
-    <button class="mini-btn" id="restoreBtn">↥ Restore</button>
-  </div>
-  <button class="managebtn" id="manageBtn">Manage categories</button>
   <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
 </div>
 
 <button class="fab" id="addFab">＋ &nbsp;Add expense</button>
+
+<!-- Row action sheet (long-press) -->
+<div class="overlay" id="rowActionOverlay">
+  <div class="sheet">
+    <h3 id="rowActionTitle">Transaction</h3>
+    <div class="row-actions">
+      <button class="ra-edit" id="rowEditBtn">Edit</button>
+      <button class="ra-del" id="rowDelBtn">Delete</button>
+    </div>
+    <div class="sheet-actions" style="margin-top:12px;">
+      <button class="btn-ghost" id="rowActionClose" style="flex:1;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Side menu -->
+<div class="overlay side" id="menuOverlay">
+  <div class="side-panel">
+    <div class="side-head">
+      <span>Menu</span>
+      <button class="icon-btn" id="menuClose" aria-label="Close">✕</button>
+    </div>
+    <button class="side-item" id="mExport">⤓ Export month to Excel</button>
+    <button class="side-item" id="mManage">☰ Manage categories</button>
+    <div class="side-sep"></div>
+    <button class="side-item" id="mBackup">↧ Back up data</button>
+    <button class="side-item" id="mRestore">↥ Restore from backup</button>
+    <div class="side-sep"></div>
+    <button class="side-item" id="mSettings">⚙ Settings</button>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <h3>Settings</h3>
+    <div class="field">
+      <label>Base currency</label>
+      <select id="baseCurSelect" class="cur-select" style="width:100%;text-align:left;"></select>
+      <div class="fx-line" id="baseCurHint" style="margin-top:8px;">The currency all totals are anchored to.</div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="settingsClose">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- Add expense sheet -->
 <div class="overlay" id="addOverlay">
@@ -382,7 +456,7 @@
   "use strict";
 
   // ---------- Persistent storage ----------
-  const APP_VERSION = "2026-08-04-9"; // bump this each build to trigger auto-update
+  const APP_VERSION = "2026-08-04-10"; // bump this each build to trigger auto-update
   const STORE_KEY = "ledger.v1";
   const PALETTE = ["#3a5a40","#b08430","#a2432f","#4a6b8a","#7d5a7d","#5a7d6b","#8a6d3b","#6b5a8a","#8a5a5a","#3b6b6b","#7d7d3b","#5a5a8a"];
 
@@ -392,8 +466,8 @@
   ];
 
   // Base currency for the overview + all reporting
-  const BASE = "SGD";
-  const BASE_SYM = "S$";
+  let BASE = "SGD";
+  let BASE_SYM = "S$";
   // Currencies offered in the picker (Frankfurter/ECB supported set)
   const CURRENCIES = ["SGD","MYR","USD","EUR","GBP","JPY","AUD","CNY","HKD","THB","IDR","KRW","CHF","CAD","NZD","INR","PHP","TWD"];
   const SYM = {SGD:"S$",MYR:"RM",USD:"$",EUR:"€",GBP:"£",JPY:"¥",AUD:"A$",CNY:"¥",HKD:"HK$",THB:"฿",IDR:"Rp",KRW:"₩",CHF:"CHF",CAD:"C$",NZD:"NZ$",INR:"₹",PHP:"₱",TWD:"NT$"};
@@ -420,6 +494,7 @@
   if(!state.categories) state.categories = [];
   if(!state.expenses) state.expenses = [];
   if(!state.currency) state.currency = "S$";
+  if(state.base && CURRENCIES.includes(state.base)){ BASE = state.base; BASE_SYM = SYM[state.base]||state.base; }
   // migrate pre-currency expenses: assume base currency, rate 1
   state.expenses.forEach(e=>{
     if(!e.cur){
@@ -442,6 +517,7 @@
   let editingId = null; // id of expense being edited, or null when adding
   let txnFilter = "";   // catId to filter the transaction list by, or "" for all
   let txnSearch = "";   // text search over name/note
+  let txnLimit = 10;    // how many transactions to show before "Show more"
   // Overview display currency (base by default). Converts the SGD totals for display only.
   let dispCur = (state.dispCur && CURRENCIES.includes(state.dispCur)) ? state.dispCur : BASE;
   let dispRate = 1;        // BASE -> dispCur multiplier
@@ -487,6 +563,44 @@
     return baseOf(e) * dispRate;                       // convert base -> display
   }
   function fmtDispExp(e){ return fmtCur(dispValueOf(e), dispCur); }
+
+  // Change the base (anchor) currency. Converts every locked baseAmount and rate.
+  async function changeBaseCurrency(newBase){
+    if(newBase===BASE) return;
+    if(!confirm("Change base currency from "+BASE+" to "+newBase+"? All stored SGD-anchored values will be converted at the latest rate. This affects every entry.")){
+      $("baseCurSelect").value = BASE; return;
+    }
+    let rate;
+    try{
+      const res = await fetch(FX_HOST+"/latest?base="+BASE+"&symbols="+newBase);
+      if(!res.ok) throw new Error("http");
+      const data = await res.json();
+      rate = data && data.rates && data.rates[newBase];
+      if(!rate || !isFinite(rate)) throw new Error("no rate");
+    }catch(err){
+      toast("Couldn't fetch rate to change base — try again online");
+      $("baseCurSelect").value = BASE;
+      return;
+    }
+    // convert every expense's locked base value into the new base
+    state.expenses.forEach(e=>{
+      const oldBase = baseOf(e);
+      e.baseAmount = round2(oldBase * rate);
+      // recompute the entry's own rate (units of newBase per 1 unit of e.cur)
+      if(e.cur===BASE){ e.cur = newBase; e.rate = 1; }
+      else if(e.amount>0){ e.rate = round2Rate(e.baseAmount / e.amount); }
+    });
+    BASE = newBase; BASE_SYM = SYM[newBase] || newBase;
+    state.base = newBase;
+    // if display currency equals new base, reset dispRate
+    if(dispCur===BASE){ dispRate=1; dispRateDate=null; }
+    persist();
+    closeSettings();
+    render();
+    toast("Base currency is now "+newBase);
+    if(dispCur!==BASE) loadDispRate();
+  }
+  function round2Rate(n){ return Math.round(n*1000000)/1000000; }
 
   // Fetch the latest BASE->dispCur rate (once per session per currency)
   async function loadDispRate(){
@@ -554,6 +668,8 @@
       cl.innerHTML = '<div class="empty"><span class="big">No spending yet</span>Add your first expense for this month.</div>';
     } else {
       cl.innerHTML = cats.map(c=>{
+        const pctOfTotal = total>0 ? (c.amt/total*100) : 0;
+        const pctStr = pctOfTotal.toFixed(pctOfTotal<10?1:0)+"%";
         const budgetBase = c.cat.budget || 0;
         // budget stored in BASE (SGD); convert to display currency for comparison
         const budgetDisp = budgetBase ? (dispCur===BASE ? budgetBase : budgetBase*dispRate) : 0;
@@ -565,7 +681,7 @@
           return `<div>
             <div class="cat-row">
               <span class="dot" style="background:${c.cat.color}"></span>
-              <span class="cat-name">${esc(c.cat.name)}</span>
+              <span class="cat-name">${esc(c.cat.name)} <span class="cat-pct">${pctStr}</span></span>
               <span class="cat-amt">${fmtCur(c.amt, dispCur)}<span class="cat-budget${over?' over':''}"> / ${fmtCur(budgetDisp, dispCur)}</span></span>
             </div>
             <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
@@ -575,7 +691,7 @@
         return `<div>
           <div class="cat-row">
             <span class="dot" style="background:${c.cat.color}"></span>
-            <span class="cat-name">${esc(c.cat.name)}</span>
+            <span class="cat-name">${esc(c.cat.name)} <span class="cat-pct">${pctStr}</span></span>
             <span class="cat-amt">${fmtCur(c.amt, dispCur)}</span>
           </div>
           <div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pct}%;background:${c.cat.color}"></div></div>
@@ -602,13 +718,15 @@
       const why = txnSearch ? "No transactions match your search." : "No transactions in this category this month.";
       tl.innerHTML = '<div class="empty"><span class="big">No matches</span>'+why+'</div>';
     } else {
-      tl.innerHTML = shown.map(e=>{
+      const LIMIT = txnLimit;
+      const visible = shown.slice(0, LIMIT);
+      tl.innerHTML = visible.map(e=>{
         const cat = catById(e.catId);
         const d = new Date(e.date+"T00:00:00");
         const ds = d.toLocaleDateString(undefined,{day:"numeric",month:"short"});
-        return `<div class="txn">
+        return `<div class="txn" data-row="${e.id}">
           <span class="dot" style="background:${cat.color};margin-top:6px"></span>
-          <div class="meta tap" data-edit="${e.id}">
+          <div class="meta">
             <p class="name">${esc(e.name||cat.name)}</p>
             <p class="tags">${esc(cat.name)} · ${ds}${e.seriesId?` · <span class="series-badge">${e.seriesType==="installment"?"Instalment":"Recurring"} ${e.seriesIndex}/${e.seriesTotal}</span>`:""}</p>
             ${e.note?`<p class="note">${esc(e.note)}</p>`:""}
@@ -616,54 +734,68 @@
           <div class="right">
             <div class="amt">${fmtCur(Number(e.amount), e.cur||BASE)}</div>
             ${(e.cur||BASE)!==dispCur ? `<div class="orig">${fmtDispExp(e)}</div>` : ""}
-            <div class="rowbtns">
-              <button class="edit" data-edit="${e.id}">Edit</button>
-              <button class="del" data-del="${e.id}">Delete</button>
-            </div>
           </div>
         </div>`;
       }).join("");
+      if(shown.length>LIMIT){
+        tl.innerHTML += `<button class="show-more" id="showMoreBtn">Show more (${shown.length-LIMIT} more)</button>`;
+      } else if(txnLimit>10 && shown.length>10){
+        tl.innerHTML += `<button class="show-more" id="showLessBtn">Show less</button>`;
+      }
     }
     try{ buildFilter(); }catch(err){ /* filter is non-critical; never let it blank the UI */ }
     try{ renderTrend(); }catch(err){ /* chart is non-critical */ }
    }catch(err){ try{ toast("Render error: "+(err&&err.message?err.message:err)); }catch(_){} }
   }
 
-  // ---------- Spending trend chart (last 6 months ending at viewed month) ----------
+  // ---------- Spending trend chart (last 3 months, stacked by category) ----------
   function renderTrend(){
     const el = $("trendChart");
     if(!el) return;
     const months = [];
-    for(let i=5;i>=0;i--){
+    for(let i=2;i>=0;i--){
       const d = new Date(viewY, viewM - i, 1);
       months.push({y:d.getFullYear(), m:d.getMonth()});
     }
-    const totals = months.map(mo=>{
+    // per month: {total, segments:[{color, amt}]}
+    const cols = months.map(mo=>{
       const k = monthKey(mo.y, mo.m);
       const es = state.expenses.filter(e=>expMonth(e)===k);
-      return es.reduce((s,e)=>s+dispValueOf(e),0);
+      const byCat = {};
+      es.forEach(e=>{ byCat[e.catId]=(byCat[e.catId]||0)+dispValueOf(e); });
+      const segs = Object.keys(byCat).map(id=>({color:catById(id).color, amt:byCat[id]}))
+        .sort((a,b)=>b.amt-a.amt);
+      const total = segs.reduce((s,x)=>s+x.amt,0);
+      return {mo, total, segs};
     });
-    const max = Math.max(...totals, 1);
-    if(totals.every(t=>t===0)){
+    const max = Math.max(...cols.map(c=>c.total), 1);
+    if(cols.every(c=>c.total===0)){
       el.innerHTML = '<div class="empty" style="padding:20px;">No spending in this range yet.</div>';
       return;
     }
-    const W=320, H=140, pad=24, bw=W/6*0.56, gap=W/6;
-    let bars="";
-    months.forEach((mo,i)=>{
-      const t=totals[i];
-      const bh = max? (t/max)*(H-pad*2) : 0;
-      const x = i*gap + (gap-bw)/2;
-      const y = H-pad-bh;
-      const isCur = (mo.y===viewY && mo.m===viewM);
-      const col = isCur ? "var(--accent)" : "var(--line)";
-      const lbl = MONTHS[mo.m].slice(0,3);
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,1).toFixed(1)}" rx="3" fill="${col}"/>`;
-      bars += `<text x="${(x+bw/2).toFixed(1)}" y="${H-pad+14}" text-anchor="middle" font-size="10" fill="var(--sub)">${lbl}</text>`;
-      if(t>0) bars += `<text x="${(x+bw/2).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--sub)">${Math.round(t)}</text>`;
+    const W=320, H=170, padB=28, padT=18, bw=54, slot=W/3;
+    let svg="";
+    cols.forEach((col,i)=>{
+      const x = i*slot + (slot-bw)/2;
+      const cur = (col.mo.y===viewY && col.mo.m===viewM);
+      // stacked segments
+      let yCursor = H-padB;
+      const fullH = H-padB-padT;
+      col.segs.forEach(seg=>{
+        const segH = max? (seg.amt/max)*fullH : 0;
+        if(segH<=0) return;
+        yCursor -= segH;
+        svg += `<rect x="${x.toFixed(1)}" y="${yCursor.toFixed(1)}" width="${bw}" height="${segH.toFixed(1)}" fill="${seg.color}" opacity="${cur?1:0.55}"/>`;
+      });
+      // outline for current month
+      const totH = max? (col.total/max)*fullH : 0;
+      if(cur){ svg += `<rect x="${x.toFixed(1)}" y="${(H-padB-totH).toFixed(1)}" width="${bw}" height="${Math.max(totH,1).toFixed(1)}" fill="none" stroke="var(--ink)" stroke-width="1.5" rx="2"/>`; }
+      // month label + total
+      svg += `<text x="${(x+bw/2).toFixed(1)}" y="${H-padB+15}" text-anchor="middle" font-size="10" fill="var(--sub)">${MONTHS[col.mo.m].slice(0,3)}</text>`;
+      if(col.total>0) svg += `<text x="${(x+bw/2).toFixed(1)}" y="${(H-padB-totH-5).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--sub)">${Math.round(col.total)}</text>`;
     });
-    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;">${bars}</svg>
-      <div style="text-align:center;font-size:11px;color:var(--sub);margin-top:4px;">Monthly total in ${dispCur}</div>`;
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;">${svg}</svg>
+      <div style="text-align:center;font-size:11px;color:var(--sub);margin-top:2px;">Stacked by category · ${dispCur}</div>`;
   }
 
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
@@ -1082,8 +1214,8 @@
   }
 
   // ---------- Events ----------
-  $("prevM").onclick=()=>{ viewM--; if(viewM<0){viewM=11;viewY--;} render(); };
-  $("nextM").onclick=()=>{ viewM++; if(viewM>11){viewM=0;viewY++;} render(); };
+  $("prevM").onclick=()=>{ viewM--; if(viewM<0){viewM=11;viewY--;} txnLimit=10; render(); };
+  $("nextM").onclick=()=>{ viewM++; if(viewM>11){viewM=0;viewY++;} txnLimit=10; render(); };
   $("addFab").onclick=openAdd;
   $("cancelAdd").onclick=closeAdd;
   $("saveAdd").onclick=saveExpense;
@@ -1117,22 +1249,45 @@
     const chip=e.target.closest("[data-cat]"); if(!chip) return;
     selCat=chip.getAttribute("data-cat"); renderChips(); validate();
   };
-  $("exportBtn").onclick=exportMonth;
-  $("txnFilter").onchange=()=>{ txnFilter = $("txnFilter").value; render(); };
-  $("txnSearch").oninput=()=>{ txnSearch = $("txnSearch").value; render(); $("txnSearch").focus(); };
+  // Side menu
+  function openMenu(){ $("menuOverlay").classList.add("on"); }
+  function closeMenu(){ $("menuOverlay").classList.remove("on"); }
+  $("menuBtn").onclick=openMenu;
+  $("menuClose").onclick=closeMenu;
+  $("menuOverlay").onclick=(e)=>{ if(e.target===$("menuOverlay")) closeMenu(); };
+  $("mExport").onclick=()=>{ closeMenu(); exportMonth(); };
+  $("mManage").onclick=()=>{ closeMenu(); openManage(); };
+  $("mBackup").onclick=()=>{ closeMenu(); backup(); };
+  $("mRestore").onclick=()=>{ closeMenu(); $("restoreFile").click(); };
+  $("mSettings").onclick=()=>{ closeMenu(); openSettings(); };
+
+  // Jump to current month
+  $("thisMonthBtn").onclick=()=>{ viewY=today.getFullYear(); viewM=today.getMonth(); txnLimit=10; render(); };
+
+  // Settings / base currency
+  function openSettings(){
+    const sel=$("baseCurSelect");
+    sel.innerHTML = CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join("");
+    sel.value = BASE;
+    $("settingsOverlay").classList.add("on");
+  }
+  function closeSettings(){ $("settingsOverlay").classList.remove("on"); }
+  $("settingsClose").onclick=closeSettings;
+  $("settingsOverlay").onclick=(e)=>{ if(e.target===$("settingsOverlay")) closeSettings(); };
+  $("baseCurSelect").onchange=()=>{ changeBaseCurrency($("baseCurSelect").value); };
+
+  $("txnFilter").onchange=()=>{ txnFilter = $("txnFilter").value; txnLimit=10; render(); };
+  $("txnSearch").oninput=()=>{ txnSearch = $("txnSearch").value; txnLimit=10; render(); $("txnSearch").focus(); };
   $("dispCur").onchange=()=>{
     dispCur = $("dispCur").value;
     state.dispCur = dispCur; persist();
     loadDispRate();
   };
-  $("backupBtn").onclick=backup;
-  $("restoreBtn").onclick=()=>$("restoreFile").click();
   $("restoreFile").onchange=(e)=>{
     const f=e.target.files && e.target.files[0];
     if(f) restore(f);
     e.target.value=""; // allow re-selecting same file later
   };
-  $("manageBtn").onclick=openManage;
   $("closeManage").onclick=closeManage;
   $("addCatBtn").onclick=addCategory;
   $("newCatName").onkeydown=(e)=>{ if(e.key==="Enter") addCategory(); };
@@ -1154,13 +1309,23 @@
       if(c){ const v=Number(bud.value); c.budget = (v>0)?round2(v):0; persist(); render(); }
     }
   });
-  $("txnList").addEventListener("click",(e)=>{
-    const ed=e.target.closest("[data-edit]");
-    if(ed){ openEdit(ed.getAttribute("data-edit")); return; }
-    const d=e.target.closest("[data-del]"); if(!d) return;
-    const id=d.getAttribute("data-del");
+  // Transaction list: long-press a row to reveal Edit/Delete; tap "Show more" to expand
+  let pressTimer=null, pressId=null, pressMoved=false;
+  let actionRowId=null;
+
+  function openRowAction(id){
     const exp=state.expenses.find(x=>x.id===id);
-    if(exp && exp.seriesId){
+    if(!exp) return;
+    actionRowId=id;
+    $("rowActionTitle").textContent = exp.name || catById(exp.catId).name || "Transaction";
+    $("rowActionOverlay").classList.add("on");
+  }
+  function closeRowAction(){ $("rowActionOverlay").classList.remove("on"); actionRowId=null; }
+
+  function doDelete(id){
+    const exp=state.expenses.find(x=>x.id===id);
+    if(!exp) return;
+    if(exp.seriesId){
       const rest = state.expenses.filter(x=>x.seriesId===exp.seriesId).length;
       let whole=false;
       try{ whole = confirm("This is part of a "+exp.seriesTotal+"-month series. OK = delete the WHOLE series ("+rest+" entries). Cancel = delete just this month."); }catch(_){ whole=false; }
@@ -1170,6 +1335,34 @@
       state.expenses=state.expenses.filter(x=>x.id!==id);
     }
     persist(); render(); toast("Deleted");
+  }
+
+  $("rowEditBtn").onclick=()=>{ const id=actionRowId; closeRowAction(); if(id) openEdit(id); };
+  $("rowDelBtn").onclick=()=>{ const id=actionRowId; closeRowAction(); if(id) doDelete(id); };
+  $("rowActionClose").onclick=closeRowAction;
+  $("rowActionOverlay").onclick=(e)=>{ if(e.target===$("rowActionOverlay")) closeRowAction(); };
+
+  const tlEl = $("txnList");
+  function rowIdFrom(t){ const r=t.closest?t.closest("[data-row]"):null; return r?r.getAttribute("data-row"):null; }
+  // touch long-press
+  tlEl.addEventListener("touchstart",(e)=>{
+    const id=rowIdFrom(e.target); if(!id) return;
+    pressId=id; pressMoved=false;
+    pressTimer=setTimeout(()=>{ if(!pressMoved) openRowAction(pressId); }, 500);
+  }, {passive:true});
+  tlEl.addEventListener("touchmove",()=>{ pressMoved=true; clearTimeout(pressTimer); }, {passive:true});
+  tlEl.addEventListener("touchend",()=>{ clearTimeout(pressTimer); }, {passive:true});
+  // mouse long-press (desktop) + show more/less clicks
+  tlEl.addEventListener("mousedown",(e)=>{
+    const id=rowIdFrom(e.target); if(!id) return;
+    pressId=id; pressMoved=false;
+    pressTimer=setTimeout(()=>{ if(!pressMoved) openRowAction(pressId); }, 500);
+  });
+  tlEl.addEventListener("mouseup",()=>{ clearTimeout(pressTimer); });
+  tlEl.addEventListener("mouseleave",()=>{ clearTimeout(pressTimer); });
+  tlEl.addEventListener("click",(e)=>{
+    if(e.target && e.target.id==="showMoreBtn"){ txnLimit += 20; render(); return; }
+    if(e.target && e.target.id==="showLessBtn"){ txnLimit = 10; render(); return; }
   });
 
   buildCurSelect();
